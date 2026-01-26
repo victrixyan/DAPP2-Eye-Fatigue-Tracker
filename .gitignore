@@ -1,0 +1,17 @@
+# Security
+.env
+
+# Virtual Environments
+.venv/
+venv/
+
+# Python 
+__pycache__/
+.pytest_cache/
+*.pyc
+
+# Ruff
+.ruff-cache/
+
+# Mac
+.DS_Store

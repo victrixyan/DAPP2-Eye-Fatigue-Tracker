@@ -1,0 +1,5 @@
+[lint]
+# Catch: PEP8 violations, Pyflakes/ logic errors, enforce import sorting
+select = ["E", "F", "I"] 
+# Fix automatically
+fixable = ["ALL"]

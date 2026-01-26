@@ -18,12 +18,12 @@ class PupilTracker:
         self.session_id = None
         self.frame_count = 0
 
-    def init_camera(self):
+    def init_camera(self, port=0):
         """
         Check camera connection. Initialze camera settings (resolution, fps)
         Return: True if successful camera setup
         """
-        self.cap = cv2.VideoCapture(0)  # assume CSI using port 0
+        self.cap = cv2.VideoCapture(port)  # assume CSI using port 0
         if not self.cap.isOpened():
             raise ConnectionError("Camera cannot be connected...")
         
@@ -43,7 +43,7 @@ class PupilTracker:
         """
         grey_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         # convert pupil to white fir finding contour
-        _, binary_frame = cv2.threshold(grey_frame, 0, 255, cv2.THRESH_BINARY_INV + cv2. THRESH_OTSU)
+        _, binary_frame = cv2.threshold(grey_frame, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
         return binary_frame
     
     def fit_ellipse(self, binary_frame, min_area=100):
@@ -70,6 +70,8 @@ class PupilTracker:
         return True, 0, 0, 0 
 
     def process_frame(self):
+        if self.cap == None:
+            raise Exception("Camera handle not created. Please initialize or check connections...")
         captured, frame = self.cap.read()
         self.frame_count += 1
         if not captured:
@@ -77,3 +79,15 @@ class PupilTracker:
         binary_frame = self.raw2binary(frame)
         blink, cx, cy, area = self.fit_ellipse(binary_frame)
         return (self.frame_count, float(blink), float(cx), float(cy), float(area))
+
+    def end_session(self):
+        """Manually end a session""" 
+        if self.cap != None:
+            self.cap.release()
+            self.cap = None
+    
+    def __del__(self):
+        """Release camera resources"""
+        if hasattr(self, "cap") and self.cap is not None:
+            self.cap.release()
+        

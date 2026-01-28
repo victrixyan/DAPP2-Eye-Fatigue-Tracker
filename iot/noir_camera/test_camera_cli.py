@@ -4,22 +4,21 @@ import time
 from video_processing import PupilTracker
 
 def test_camera():
-    tracker = PupilTracker()
     user_id = input("user id :")
-
-    try:
-        if tracker.init_camera():
-            print("Camera initialized...")
-        else: 
-            raise ConnectionError("Camera initiation failure")
-        session_id = tracker.init_session
-        print("New session. id: {session_id}")
-        print("Test started. Press Ctrl + c to end test")
-
-        while True:
-            metric_tuple = tracker.process_frame()
-            print(metric_tuple)
+    try: 
+        with PupilTracker() as tracker:
+            while True:
+                print(tracker.process_frame())          
     except KeyboardInterrupt:
-        print("^C test ended")
-    finally:
-        tracker.end_session()
+        print("^c exit test session")
+    except Exception as e:
+        print(f"Error: {e}")
+
+def main():
+    start = time.perf_counter()
+    test_camera()
+    end = time.perf_counter()
+    print(f"Session duration: {end - start}")
+
+if __name__ == "__main__":
+    main()

@@ -14,7 +14,7 @@ class PupilTracker:
         """
         self.resolution = resolution
         self.fps = fps
-        self.cap = None  # camera capture obj
+        self.cap = None  # camera capture obj, a handle to the camera
         self.session_id = None
         self.frame_count = 0
 
@@ -74,6 +74,7 @@ class PupilTracker:
             raise Exception("Camera handle not created. Please initialize or check connections...")
         captured, frame = self.cap.read()
         self.frame_count += 1
+
         if not captured:
             return None
         binary_frame = self.raw2binary(frame)
@@ -86,8 +87,11 @@ class PupilTracker:
             self.cap.release()
             self.cap = None
     
-    def __del__(self):
-        """Release camera resources"""
-        if hasattr(self, "cap") and self.cap is not None:
-            self.cap.release()
-        
+    # Cotext manager: auto release camera after use
+    def __enter__(self):
+        self.init_camera()
+        self.init_session()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.end_session()

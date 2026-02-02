@@ -13,10 +13,14 @@ def test_camera():
                 data = tracker.process_frame()
                 
                 if data:
-                    # Unpacking the tuple for clearer terminal feedback
+                    # Unpacking the 5 metrics
                     f_count, blink, cx, cy, area = data
-                    status = "BLINK" if blink else f"Pos: ({cx}, {cy}) Area: {area}"
-                    print(f"Frame {f_count} | {status}", end='\r')
+                    
+                    # Formatting status to show "Blink" vs "Not Blink" clearly
+                    status = "BLINK    " if blink else "NOT BLINK"
+                    
+                    # Using \r to update the same line in the terminal
+                    print(f"F: {f_count:05d} | {status} | X: {cx:>6.2f} | Y: {cy:>6.2f} | A: {area:>8.2f}", end='\r')
                 else:
                     print("\nWarning: Failed to capture frame.")
                     break

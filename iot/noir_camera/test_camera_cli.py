@@ -1,5 +1,6 @@
 # Temporary terminal-prompted test for NoIR 
 import time
+import sys
 from video_processing import PupilTracker
 
 def test_camera():
@@ -16,11 +17,12 @@ def test_camera():
                     # Unpacking the 5 metrics
                     f_count, blink, cx, cy, area = data
                     
-                    # Formatting status to show "Blink" vs "Not Blink" clearly
-                    status = "BLINK    " if blink else "NOT BLINK"
+                    # UPDATED: Mapping integer 1/0 to BLINK/NOT BLINK
+                    status = "BLINK    " if blink == 1 else "NOT BLINK"
                     
                     # Using \r to update the same line in the terminal
                     print(f"F: {f_count:05d} | {status} | X: {cx:>6.2f} | Y: {cy:>6.2f} | A: {area:>8.2f}", end='\r')
+                    sys.stdout.flush() 
                 else:
                     print("\nWarning: Failed to capture frame.")
                     break

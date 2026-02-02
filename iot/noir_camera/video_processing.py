@@ -1,28 +1,30 @@
 # Module: raw NoIR video frames to metrics
-# Return: (session_id: int, blink: bool, cx: float, cy: float)
+# Return: session_id: int, blink: bool, cx: float, cy: float 
+# Units: pixels for time, s or ns for time
+# All constant parameters can be tuned according to test results
 
 import cv2
 import time
 import math
-from picamera2 import Picamera2
+from picamera2 import Picamera2  # Raspberry pi camera module interface 
 
 class PupilTracker:
     """
-    Pupil Tracker optimized for tiny-aperture NoIR lenses (<=1mm).
+    Pupil Tracker optimized for Camera Module 2 NoIR lenses (<=1mm).
     Features contrast stretching to handle shallow depth-of-field issues.
     """
 
-    def __init__(self, resolution=(640, 480), fps=60):
+    def __init__(self, resolution=(640, 480), fps=50):
         self.resolution = resolution
         self.fps = fps
         self.picam2 = None  
         self.session_id = None
         self.frame_count = 0
-        self._pi = math.pi 
 
     def init_camera(self):
-        """Initializes camera using dictionary-style configuration."""
+        """Initialize camera"""
         self.picam2 = Picamera2()
+        # YUV420: picamera2 native; Y-plane(luminance) is pure greyscale
         config = self.picam2.create_preview_configuration(
             main={'format': 'YUV420', 'size': self.resolution}
         )
@@ -35,50 +37,71 @@ class PupilTracker:
         self.session_id = time.time_ns()
 
     def find_best_pupil(self, grey_frame):
-        # --- NEW: CONTRAST STRETCHING ---
-        # Tiny lenses often produce 'muddy' gray images. 
-        # This stretches the darkest pixels to black to help the threshold find the pupil.
+        """
+        1. Normalizes image contrast to handle 'muddy' NoIR sensor data.
+        2. Applies a heavy median blur to reduce sensor noise from the small aperture.
+        3. Iterates through multiple dark-level thresholds to find dark blobs.
+        4. Filters blobs based on area and circularity.
+        5. Performs blink detection based on the aspect ratio of the fitted ellipse.
+        Args:
+            grey_frame (numpy.ndarray)
+        Returns:
+            tuple: (is_blink, cx, cy, area)
+                - is_blink (bool): True if no pupil is found or if the eye is closed.
+                - cx (float): The X-coordinate of the pupil center.
+                - cy (float): The Y-coordinate of the pupil center.
+                - area (float): The calculated area of the pupil contour.
+        """
+        # Contrast stretch/ Normalization
+        # normalize narrow distributions
         min_val, max_val, _, _ = cv2.minMaxLoc(grey_frame)
+        # output = (input + beta) * alpha
         grey_frame = cv2.convertScaleAbs(grey_frame, alpha=255.0/(max_val - min_val + 1), beta=-min_val)
 
-        # Heavier blur to handle the high noise of a tiny 1mm lens
-        blurred = cv2.medianBlur(grey_frame, 9)
+        # Blur to remove noise points using a sliding window
+        # center of kernel = median (not weighted average in convolution) to preserve sharp edges
+        blurred = cv2.medianBlur(grey_frame, 9) # kernel size n x n
         
         best_candidate = None
         highest_score = 0
         
-        # Scan dark levels - focused on the very low end (darkest spots)
+        # Multilevel Thresholding
+        # for low constrast, poor lighting; brightness can fluctuate
+        # singular thresholding may produce no contours
         for thresh in [25, 45, 65, 85]:
             _, binary = cv2.threshold(blurred, thresh, 255, cv2.THRESH_BINARY_INV)
+            # Approximate pupils with contours
             contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             
-            for cnt in contours:
-                area = cv2.contourArea(cnt)
+            for contour in contours:
+                area = cv2.contourArea(contour)
                 # Filter for realistic pupil sizes
-                if 400 < area < 25000:
-                    peri = cv2.arcLength(cnt, True)
-                    if peri == 0: continue
+                if 40 < area < 27000:
+                    perimeter = cv2.arcLength(contour, True)
+                    if perimeter == 0: continue
                     
-                    circ = (4 * self._pi * area) / (peri ** 2)
+                    # Circularity formula (roundness)
+                    # if circle, circularity = 1 
+                    circularity = (4 * math.pi * area) / (perimeter ** 2)
                     
-                    # Keep circularity low (0.20) for tiny lens distortion
-                    if circ > 0.20: 
-                        score = circ * area
-                        if score > highest_score and len(cnt) >= 5:
+                    if circularity > 0.20: 
+                        score = circularity * area
+                        if score > highest_score and len(contour) >= 5:
                             highest_score = score
-                            best_candidate = cnt
+                            best_candidate = contour
+                            candidate_area = area
 
         if best_candidate is not None:
-            (cx, cy), (w, h), angle = cv2.fitEllipse(best_candidate)
-            area = cv2.contourArea(best_candidate)
+            # width and height of the smallest rectangle that can contain the ellipse
+            (cx, cy), (w, h), _ = cv2.fitEllipse(best_candidate)
             
-            # Blink Detection: Aspect Ratio + Area Floor
-            if h < (w * 0.30) or area < 500:
-                return True, 0.0, 0.0, 0.0
+            # Blink Detection: Aspect Ratio (flatness) + Area Floor
+            if h < (w * 0.20) or candidate_area < 400:
+                return 1, 0.0, 0.0, 0.0
                 
-            return False, round(cx, 2), round(cy, 2), round(area, 2)
+            return 0, round(cx, 2), round(cy, 2), round(candidate_area, 2)
 
-        return True, 0.0, 0.0, 0.0
+        return 1, 0.0, 0.0, 0.0
 
     def process_frame(self):
         if self.picam2 is None:

@@ -10,7 +10,7 @@ def test_camera():
             while True:
                 print(tracker.process_frame())          
     except KeyboardInterrupt:
-        print("^c exit test session")
+        print("\n^C exit test session")
     except Exception as e:
         print(f"Error: {e}")
 
@@ -18,7 +18,7 @@ def main():
     start = time.perf_counter()
     test_camera()
     end = time.perf_counter()
-    print(f"Session duration: {end - start}")
+    print(f"Session duration: {(end - start):.2f}")
 
 if __name__ == "__main__":
     main()

@@ -3,86 +3,86 @@
 
 import cv2
 import time
-import numpy as np
+import math
 from picamera2 import Picamera2
 
 class PupilTracker:
-    """Optimized pupil tracker for Pi 5 NoIR using Adaptive Multi-Thresholding."""
+    """
+    Pupil Tracker optimized for tiny-aperture NoIR lenses (<=1mm).
+    Features contrast stretching to handle shallow depth-of-field issues.
+    """
 
-    def __init__(self, resolution=(640, 480), fps=40):
-        """
-        Args:
-            resolution (tuple): 640x480 is the sweet spot for Pi 5 precision.
-            fps (int): Target frame rate.
-        """
+    def __init__(self, resolution=(640, 480), fps=60):
         self.resolution = resolution
         self.fps = fps
         self.picam2 = None  
         self.session_id = None
         self.frame_count = 0
+        self._pi = math.pi 
 
     def init_camera(self):
-        """Initialize camera handle and start YUV420 stream."""
+        """Initializes camera using dictionary-style configuration."""
         self.picam2 = Picamera2()
         config = self.picam2.create_preview_configuration(
             main={'format': 'YUV420', 'size': self.resolution}
         )
+        config['main']['fps'] = self.fps
         self.picam2.configure(config)
         self.picam2.start()
         return True
 
     def init_session(self):
-        """Generate session timestamp."""
         self.session_id = time.time_ns()
 
     def find_best_pupil(self, grey_frame):
-        """
-        Scan multiple thresholds to find the most circular dark object.
+        # --- NEW: CONTRAST STRETCHING ---
+        # Tiny lenses often produce 'muddy' gray images. 
+        # This stretches the darkest pixels to black to help the threshold find the pupil.
+        min_val, max_val, _, _ = cv2.minMaxLoc(grey_frame)
+        grey_frame = cv2.convertScaleAbs(grey_frame, alpha=255.0/(max_val - min_val + 1), beta=-min_val)
+
+        # Heavier blur to handle the high noise of a tiny 1mm lens
+        blurred = cv2.medianBlur(grey_frame, 9)
         
-        Args:
-            grey_frame (numpy.ndarray): Native grayscale Y-plane.
-        Returns:
-            tuple: (blink: bool, cx: float, cy: float, area: float)
-        """
-        # Stronger blur to handle NoIR sensor grain at 640x480
-        blurred = cv2.medianBlur(grey_frame, 5)
+        best_candidate = None
+        highest_score = 0
         
-        best_contour = None
-        max_circularity = 0
-        
-        # We scan a wider range of thresholds to catch the pupil
-        # If your pupil is 'Bright' (White), change THRESH_BINARY_INV to THRESH_BINARY
-        for threshold_value in [30, 50, 70, 90, 110]:
-            _, binary = cv2.threshold(blurred, threshold_value, 255, cv2.THRESH_BINARY_INV)
+        # Scan dark levels - focused on the very low end (darkest spots)
+        for thresh in [25, 45, 65, 85]:
+            _, binary = cv2.threshold(blurred, thresh, 255, cv2.THRESH_BINARY_INV)
             contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             
             for cnt in contours:
                 area = cv2.contourArea(cnt)
-                # Size constraints for 640x480
-                if 500 < area < 15000: 
-                    perimeter = cv2.arcLength(cnt, True)
-                    if perimeter == 0: continue
+                # Filter for realistic pupil sizes
+                if 400 < area < 25000:
+                    peri = cv2.arcLength(cnt, True)
+                    if peri == 0: continue
                     
-                    # Circularity: 1.0 is a perfect circle
-                    circularity = (4 * np.pi * area) / (perimeter ** 2)
+                    circ = (4 * self._pi * area) / (peri ** 2)
                     
-                    # Relaxed circularity to 0.4 to catch pupils partially covered by lids
-                    if circularity > max_circularity and len(cnt) >= 5:
-                        max_circularity = circularity
-                        best_contour = cnt
+                    # Keep circularity low (0.20) for tiny lens distortion
+                    if circ > 0.20: 
+                        score = circ * area
+                        if score > highest_score and len(cnt) >= 5:
+                            highest_score = score
+                            best_candidate = cnt
 
-        if best_contour is not None and max_circularity > 0.4:
-            (cx, cy), (w, h), angle = cv2.fitEllipse(best_contour)
-            # Ensure the object isn't too thin (like an eyelash)
-            if 0.4 < (w / h) < 1.6:
-                return False, round(cx, 2), round(cy, 2), round(cv2.contourArea(best_contour), 2)
+        if best_candidate is not None:
+            (cx, cy), (w, h), angle = cv2.fitEllipse(best_candidate)
+            area = cv2.contourArea(best_candidate)
+            
+            # Blink Detection: Aspect Ratio + Area Floor
+            if h < (w * 0.30) or area < 500:
+                return True, 0.0, 0.0, 0.0
+                
+            return False, round(cx, 2), round(cy, 2), round(area, 2)
 
-        return True, 0, 0, 0
+        return True, 0.0, 0.0, 0.0
 
     def process_frame(self):
-        """Capture hardware buffer and process."""
         if self.picam2 is None:
-            raise Exception("Camera handle not created.")
+            return None
         
         frame_data = self.picam2.capture_array()
         self.frame_count += 1
@@ -90,14 +90,13 @@ class PupilTracker:
         if frame_data is None:
             return None
             
-        # Get Grayscale (Y-plane)
+        # Extract Y-plane (Grayscale)
         grey_frame = frame_data if len(frame_data.shape) == 2 else frame_data[:, :, 0]
         
         blink, cx, cy, area = self.find_best_pupil(grey_frame)
         return (self.frame_count, float(blink), float(cx), float(cy), float(area))
 
     def end_session(self):
-        """Stop hardware."""
         if self.picam2 is not None:
             self.picam2.stop()
             self.picam2 = None

@@ -7,14 +7,14 @@ import numpy as np
 from picamera2 import Picamera2
 
 class PupilTracker:
-    """Tracks pupil metrics using Pi 5 NoIR camera via optimized YUV420 capture."""
+    """Tracks pupil metrics using Multi-Level Thresholding for better IR robustness."""
 
-    def __init__(self, resolution=(320, 240), fps=40):
+    def __init__(self, resolution=(640, 480), fps=40):
         """
         Initialize tracker parameters.
         
         Args:
-            resolution (tuple): Capture width and height.
+            resolution (tuple): Capture width and height. Optimized at 640x480.
             fps (int): Target frames per second.
         """
         self.resolution = resolution
@@ -42,50 +42,51 @@ class PupilTracker:
         """Generate a unique session ID."""
         self.session_id = time.time_ns()
 
-    def raw2binary(self, grey_frame): 
+    def find_best_pupil(self, grey_frame):
         """
-        Convert grayscale image to binary.
+        Multi-thresholding logic to find the most circular dark object.
         
         Args:
-            grey_frame (numpy.ndarray): Input grayscale array.
-            
-        Returns:
-            numpy.ndarray: Thresholded binary image.
-        """
-        _, binary_frame = cv2.threshold(
-            grey_frame, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
-        )
-        return binary_frame
-    
-    def fit_ellipse(self, binary_frame, min_area=100):
-        """
-        Fit ellipse to largest contour.
-        
-        Args:
-            binary_frame (numpy.ndarray): Binary image input.
-            min_area (int): Minimum pixel area for valid pupil.
+            grey_frame (numpy.ndarray): Grayscale input.
             
         Returns:
             tuple: (blink: bool, cx: float, cy: float, area: float)
         """
-        contours, _ = cv2.findContours(
-            binary_frame, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-        )
+        # Noise reduction is vital for high-res NoIR
+        blurred = cv2.GaussianBlur(grey_frame, (5, 5), 0)
         
-        if not contours:
-            return True, 0, 0, 0  
+        best_contour = None
+        max_circularity = 0
         
-        max_contour = max(contours, key=cv2.contourArea)
-        area = cv2.contourArea(max_contour) 
-
-        if area > min_area and len(max_contour) > 5:
-            (cx, cy), _, _ = cv2.fitEllipse(max_contour)
-            return False, round(cx, 2), round(cy, 2), round(area, 2)
+        # Multi-thresholding: scan dark-to-mid tones (Pupils are usually < 80)
+        for threshold_value in range(20, 100, 20):
+            _, binary = cv2.threshold(blurred, threshold_value, 255, cv2.THRESH_BINARY_INV)
+            contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             
-        return True, 0, 0, 0 
+            for cnt in contours:
+                area = cv2.contourArea(cnt)
+                if 200 < area < 15000:  # Size filter for 640x480
+                    perimeter = cv2.arcLength(cnt, True)
+                    if perimeter == 0: continue
+                    
+                    # Circularity formula: 4 * pi * Area / Perimeter^2
+                    circularity = (4 * np.pi * area) / (perimeter ** 2)
+                    
+                    if circularity > max_circularity and len(cnt) >= 5:
+                        max_circularity = circularity
+                        best_contour = cnt
+
+        # Determine if a valid pupil was found (circularity > 0.6 is typical)
+        if best_contour is not None and max_circularity > 0.5:
+            (cx, cy), (w, h), angle = cv2.fitEllipse(best_contour)
+            # Aspect ratio check: pupils should not be extremely thin rectangles
+            if 0.5 < (w / h) < 1.5:
+                return False, round(cx, 2), round(cy, 2), round(cv2.contourArea(best_contour), 2)
+
+        return True, 0, 0, 0
 
     def process_frame(self):
-        """Capture YUV buffer and extract the Y-channel (Grayscale)."""
+        """Capture YUV buffer and run multi-threshold tracking."""
         if self.picam2 is None:
             raise Exception("Camera not initialized.")
         
@@ -95,17 +96,13 @@ class PupilTracker:
         if frame_data is None:
             return None
             
-        # FIX: For YUV420, capture_array often returns a 2D array 
-        # where the Y-plane is the top section. 
-        # On Pi 5, if the shape is already (Height, Width), it IS the Y-plane.
+        # Extract Y-plane (Grayscale)
         if len(frame_data.shape) == 2:
             grey_frame = frame_data
         else:
-            # If it's a 3D array, take the first channel
             grey_frame = frame_data[:, :, 0]
         
-        binary_frame = self.raw2binary(grey_frame)
-        blink, cx, cy, area = self.fit_ellipse(binary_frame)
+        blink, cx, cy, area = self.find_best_pupil(grey_frame)
         
         return (self.frame_count, float(blink), float(cx), float(cy), float(area))
 
@@ -116,11 +113,9 @@ class PupilTracker:
             self.picam2 = None
     
     def __enter__(self):
-        """Context manager entry."""
         self.init_camera()
         self.init_session()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit."""
         self.end_session()

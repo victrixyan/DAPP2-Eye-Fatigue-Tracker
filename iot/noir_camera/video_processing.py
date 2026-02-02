@@ -8,7 +8,7 @@ class PupilTracker:
     # resolution to be tuned according to device
     # human blink duration average ~0.1-0.4s
     # frames per second > 10 + margin to compare adjacent states
-    def __init__(self, resolution=(320, 240), fps=30):
+    def __init__(self, resolution=(160, 120), fps=20):
         """
         Args: (Optional) resolution: tuple=(320, 240), fps: int=30
         """
@@ -52,7 +52,7 @@ class PupilTracker:
         Return: blink, cx, cy, area
         """
         # Only retreive outermost contours, compress edge data
-        contours, _ = cv2.findContours(binary_frame, cv2.RETR_EXTERNAL, cv2. CHAIN_APPROX_SIMPLE)
+        contours, _ = cv2.findContours(binary_frame, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
         # Blink detection
         if not contours:

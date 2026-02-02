@@ -8,7 +8,7 @@ class PupilTracker:
     # resolution to be tuned according to device
     # human blink duration average ~0.1-0.4s
     # frames per second > 10 + margin to compare adjacent states
-    def __init__(self, resolution=(160, 120), fps=20):
+    def __init__(self, resolution=(320, 240), fps=40):
         """
         Args: (Optional) resolution: tuple=(320, 240), fps: int=30
         """

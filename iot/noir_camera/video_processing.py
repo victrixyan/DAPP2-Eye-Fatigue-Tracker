@@ -85,12 +85,7 @@ class PupilTracker:
         return True, 0, 0, 0 
 
     def process_frame(self):
-        """
-        Extract grayscale from YUV buffer and run tracking logic.
-        
-        Returns:
-            tuple: (frame_count, blink, cx, cy, area) or None.
-        """
+        """Capture YUV buffer and extract the Y-channel (Grayscale)."""
         if self.picam2 is None:
             raise Exception("Camera not initialized.")
         
@@ -100,8 +95,14 @@ class PupilTracker:
         if frame_data is None:
             return None
             
-        # Optimization: Slice Y-plane (index 0) to get grayscale natively
-        grey_frame = frame_data[:, :, 0]
+        # FIX: For YUV420, capture_array often returns a 2D array 
+        # where the Y-plane is the top section. 
+        # On Pi 5, if the shape is already (Height, Width), it IS the Y-plane.
+        if len(frame_data.shape) == 2:
+            grey_frame = frame_data
+        else:
+            # If it's a 3D array, take the first channel
+            grey_frame = frame_data[:, :, 0]
         
         binary_frame = self.raw2binary(grey_frame)
         blink, cx, cy, area = self.fit_ellipse(binary_frame)

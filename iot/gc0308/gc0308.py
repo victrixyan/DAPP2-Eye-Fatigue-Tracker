@@ -140,7 +140,7 @@ class MetricStateTracker:
 class USBPupilTracker:
     """Orchestrates the lifecycle of the USB video pipeline."""
     
-    def __init__(self, camera_index=0, resolution=(640, 480), fps=120):
+    def __init__(self, camera_index=0, resolution=(640, 480), fps=30):
         self.camera_index = camera_index
         self.resolution = resolution
         self.fps = fps

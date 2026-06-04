@@ -1,6 +1,8 @@
 # Not tracked by git
 # Security
 .env
+/aws-iot-certs
+config.json
 
 # Virtual Environments
 .venv/

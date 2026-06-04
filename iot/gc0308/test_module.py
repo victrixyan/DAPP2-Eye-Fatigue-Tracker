@@ -20,7 +20,9 @@ def test_camera():
                     # Map integer 1/0 to clean terminal output
                     status = "BLINK" if blink == 1 else "OPEN "
                     
-                    # Compact formatting to fit safely on one terminal line
+                    # Print: frame count, blink/open, x,y coordinates, raw area, EMA smoothed area - per frame 
+                    #        effective interblink interval (IBI) - per frame
+                    #        light intensity ~ 1Hz 
                     out_str = (f"F:{f_count:05d} | {status} | X:{cx:>6.2f} Y:{cy:>6.2f} "
                                f"| A:{area:>7.2f} | EMA:{ema:>7.2f} "
                                f"| IBI:{ibi:>5.2f}s | LGT:{light:>6.2f}")

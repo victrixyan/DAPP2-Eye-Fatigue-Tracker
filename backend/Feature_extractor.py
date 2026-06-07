@@ -2,6 +2,7 @@ import csv
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.ensemble import IsolationForest
+from sklearn.linear_model import LinearRegression
 import pymannkendall as mk
 import copy
 ibi_val_train=[]
@@ -78,20 +79,21 @@ iso_forest.fit(z_score)
 
 fig = plt.figure(num="Anomaly Detection")
 ax = fig.add_subplot(projection="3d")
-ax.set_xlim(-5, 5)
-ax.set_ylim(-5, 5)
-ax.set_zlim(0, 1)
+ax.set_xlim(0, 10)
+ax.set_ylim(0, 14)
+ax.set_zlim(0, 10)
 ax.grid(False)
-ax.set_xlabel("PA z-score")
-ax.set_ylabel("IBI z-score")
-ax.set_zlabel("Anomaly Score")
-
-training_points = ax.scatter(z_score[:, 0], z_score[:, 1], 0, c="gainsboro", label="Training Data", alpha=0.6,marker="o")
-
+ax.set_xlabel("Pupil Size")
+ax.set_ylabel("Inter-blink Interval")
+ax.set_zlabel("Fatigue Score")
 eye_data_test_df = np.column_stack((pupil_mean_test, ibi_val_test_f))
+training_points = ax.scatter(eye_data_df[:,0]/np.max(eye_data_test_df[:,0])*12, eye_data_df[:,1], 0, c="gainsboro", label="Training Data", alpha=0.6,marker="o")
+
+
 z_score_test=np.column_stack(((eye_data_test_df[:,0]-mean_ps)/std_dev_ps,(eye_data_test_df[:,1]-mean_ibi)/std_dev_ibi))
 test_score = iso_forest.decision_function(z_score_test) * -1 + 0.2
-test_points = ax.scatter(z_score_test[:, 0], z_score_test[:, 1], test_score, c=test_score,cmap="Reds", label="Test Data", alpha=0.6,marker="o",vmin=0,vmax=0.6)
+mask = (eye_data_test_df[:,0]/np.max(eye_data_test_df[:,0])*12 < 10) & (eye_data_test_df[:,1] < 14)
+t_points = ax.scatter(eye_data_test_df[:,0][mask]/np.max(eye_data_test_df[:,0])*12, eye_data_test_df[:,1][mask], ((test_score[mask]-np.min(test_score))**2/(np.max(test_score)-np.min(test_score))**2)*10, c=((test_score[mask]-np.min(test_score))**2/(np.max(test_score)-np.min(test_score))**2)*10,cmap="Reds", label="Test Data", alpha=0.6,marker="o",vmin=0,vmax=10)
 
 
 
@@ -109,5 +111,15 @@ ax2.set_ylabel('Test score')
 new_set= [np.mean(test_score[i-4:i+5]) for i in range(4,len(test_score)-4)]
 new_set= list(test_score[0:4])+new_set+list(test_score[len(test_score)-4:len(test_score)])
 ax2.scatter([x-304 for x in index_test if x >300],new_set,color = "black",s=10)
+fig3,ax3= plt.subplots(num="Linear Regression Model")
+ax3.set_xlabel('Time')
+ax3.set_ylabel('Test score')
+x_vals = np.array([x-304 for x in index_test if x > 300]).reshape(-1, 1)
+
+model = LinearRegression()
+model.fit(x_vals, test_score)
+test_score_pred = model.predict(x_vals)
+
+ax3.scatter(x_vals, test_score_pred)
 plt.show()
         

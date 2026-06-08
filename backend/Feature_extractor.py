@@ -79,21 +79,25 @@ iso_forest.fit(z_score)
 
 fig = plt.figure(num="Anomaly Detection")
 ax = fig.add_subplot(projection="3d")
-ax.set_xlim(4, 16)
+ax.set_xlim(0.5, 4.5)
 ax.set_ylim(0, 14)
 ax.set_zlim(0, 10)
+ax.set_xticks([1, 2, 3, 4])
 ax.grid(False)
 ax.set_xlabel("Pupil Size (mm)")
 ax.set_ylabel("Inter-blink Interval (s)")
 ax.set_zlabel("Fatigue Score")
 eye_data_test_df = np.column_stack((pupil_mean_test, ibi_val_test_f))
-training_points = ax.scatter(np.sqrt(eye_data_df[:,0]*(3.4**2)*(10**(-2))/np.pi), eye_data_df[:,1], 0, c="gainsboro", label="Training Data", alpha=0.6,marker="o")
+pixel_size_mm = 3.4*10**(-3)
+focal_length_mm = 2.6
+working_distance_mm = 50
+training_points = ax.scatter(np.sqrt(eye_data_df[:,0]*(pixel_size_mm**2)/np.pi)/(focal_length_mm/working_distance_mm), eye_data_df[:,1], 0, c="gainsboro", label="Training Data", alpha=0.6,marker="o")
 
 
 z_score_test=np.column_stack(((eye_data_test_df[:,0]-mean_ps)/std_dev_ps,(eye_data_test_df[:,1]-mean_ibi)/std_dev_ibi))
 test_score = iso_forest.decision_function(z_score_test) * -1 + 0.2
-mask = (np.sqrt(eye_data_test_df[:,0]*(3.4**2)*(10**(-2))/np.pi) < 16) & (eye_data_test_df[:,1] < 14)
-t_points = ax.scatter(np.sqrt(eye_data_test_df[:,0][mask]*(3.4**2)*(10**(-2))/np.pi), eye_data_test_df[:,1][mask], ((test_score[mask]-np.min(test_score))**2/(np.max(test_score)-np.min(test_score))**2)*10, c=((test_score[mask]-np.min(test_score))**2/(np.max(test_score)-np.min(test_score))**2)*10,cmap="Reds", label="Test Data", alpha=0.6,marker="o",vmin=0,vmax=10)
+mask = (np.sqrt(eye_data_test_df[:,0]*(pixel_size_mm**2)/np.pi)/(focal_length_mm/working_distance_mm) < 16) & (eye_data_test_df[:,1] < 14)
+t_points = ax.scatter(np.sqrt(eye_data_test_df[:,0][mask]*(pixel_size_mm**2)/np.pi)/(focal_length_mm/working_distance_mm), eye_data_test_df[:,1][mask], ((test_score[mask]-np.min(test_score))**2/(np.max(test_score)-np.min(test_score))**2)*10, c=((test_score[mask]-np.min(test_score))**2/(np.max(test_score)-np.min(test_score))**2)*10,cmap="Reds", label="Test Data", alpha=0.6,marker="o",vmin=0,vmax=10)
 
 
 

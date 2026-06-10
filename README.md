@@ -1,1 +1,1 @@
-Project documentation
+![Projest Poster](docs/Mol_Group_E_Poster.jpg)

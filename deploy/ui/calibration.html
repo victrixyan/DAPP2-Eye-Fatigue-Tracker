@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Eye Fatigue Tracker — Calibration</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .page-center {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: calc(100vh - 53px);
+      padding: 24px;
+    }
+
+    .calib-card {
+      background: var(--white);
+      border: 1.5px solid var(--lavender);
+      border-radius: var(--radius-lg);
+      width: 100%;
+      max-width: 480px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+
+    .calib-card-title {
+      background: var(--lavender-soft);
+      padding: 14px 24px;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--purple-dark);
+      text-align: center;
+      border-bottom: 1.5px solid var(--lavender);
+    }
+
+    .calib-body {
+      padding: 32px 28px;
+    }
+
+    .eye-icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: var(--lavender-soft);
+      border: 2px solid var(--lavender);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 24px;
+    }
+
+    .calib-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--purple-dark);
+      text-align: center;
+      margin-bottom: 8px;
+    }
+
+    .calib-sub {
+      font-size: 13px;
+      color: var(--text-light);
+      text-align: center;
+      margin-bottom: 28px;
+      line-height: 1.6;
+    }
+
+    .instructions {
+      background: var(--lavender-soft);
+      border-radius: var(--radius-sm);
+      padding: 16px 20px;
+      margin-bottom: 28px;
+    }
+
+    .instruction-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 10px;
+      font-size: 13px;
+      color: var(--text-mid);
+      line-height: 1.5;
+    }
+
+    .instruction-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .bullet {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--purple-mid);
+      color: var(--white);
+      font-size: 11px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .progress-section {
+      margin-bottom: 12px;
+    }
+
+    .progress-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      color: var(--text-light);
+      margin-bottom: 8px;
+    }
+
+    .progress-bar-bg {
+      background: var(--lavender-soft);
+      border-radius: var(--radius-pill);
+      height: 12px;
+      overflow: hidden;
+      border: 1px solid var(--lavender);
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      border-radius: var(--radius-pill);
+      background: var(--purple-mid);
+      width: 0%;
+      transition: width 1s linear;
+    }
+
+    .calib-timer {
+      text-align: center;
+      font-size: 36px;
+      font-weight: 700;
+      color: var(--purple-dark);
+      margin-top: 20px;
+    }
+
+    .calib-timer-label {
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-light);
+      margin-top: 4px;
+    }
+
+    .calib-complete {
+      display: none;
+      text-align: center;
+      padding: 16px 0 0;
+    }
+
+    .calib-complete p {
+      font-size: 14px;
+      color: var(--purple-mid);
+      font-weight: 500;
+      margin-bottom: 16px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="header">
+    <svg class="header-icon" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="2">
+      <path d="M2 12C2 12 6 5 12 5C18 5 22 12 22 12C22 12 18 19 12 19C6 19 2 12 2 12Z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </svg>
+    <h1>Eye Fatigue Tracker</h1>
+  </header>
+
+  <main class="page-center">
+    <div class="calib-card">
+      <div class="calib-card-title">Calibration</div>
+      <div class="calib-body">
+
+        <div class="eye-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none"
+               stroke="#4A3080" stroke-width="1.5">
+            <path d="M2 12C2 12 6 5 12 5C18 5 22 12 22 12C22 12 18 19 12 19C6 19 2 12 2 12Z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+        </div>
+
+        <div class="calib-title">Establishing your baseline</div>
+        <div class="calib-sub">
+          Please remain still and blink naturally while we calibrate
+          the system to your personal blink pattern.
+        </div>
+
+        <div class="instructions">
+          <div class="instruction-item">
+            <div class="bullet">1</div>
+            Sit comfortably and look at the screen naturally
+          </div>
+          <div class="instruction-item">
+            <div class="bullet">2</div>
+            Blink at your normal rate, do not try to control it
+          </div>
+          <div class="instruction-item">
+            <div class="bullet">3</div>
+            Avoid rubbing your eyes or looking away for long periods
+          </div>
+          <div class="instruction-item">
+            <div class="bullet">4</div>
+            The system will notify you when calibration is complete
+          </div>
+        </div>
+
+        <div class="progress-section">
+          <div class="progress-header">
+            <span id="calib-status">Calibrating...</span>
+            <span id="calib-percent">0%</span>
+          </div>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" id="calib-bar"></div>
+          </div>
+        </div>
+
+        <div class="calib-timer" id="calib-timer">05:00</div>
+        <div class="calib-timer-label">remaining</div>
+
+        <div class="calib-complete" id="calib-complete">
+          <p>Calibration complete — taking you to your dashboard.</p>
+        </div>
+
+      </div>
+    </div>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

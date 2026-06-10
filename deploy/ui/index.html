@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Eye Fatigue Tracker — Sign In</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* page-specific layout */
+    .page-center {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: calc(100vh - 53px);
+      padding: 24px;
+    }
+
+    .auth-card {
+      background: var(--white);
+      border: 1.5px solid var(--lavender);
+      border-radius: var(--radius-lg);
+      width: 100%;
+      max-width: 420px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+
+    .auth-card-title {
+      background: var(--lavender-soft);
+      padding: 14px 24px;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--purple-dark);
+      text-align: center;
+      border-bottom: 1.5px solid var(--lavender);
+    }
+
+    .auth-card-body {
+      padding: 24px;
+    }
+
+    .auth-card-body h2 {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--purple-dark);
+      margin-bottom: 20px;
+    }
+
+    .auth-footer {
+      margin-top: 16px;
+      text-align: center;
+      font-size: 13px;
+      color: var(--text-light);
+    }
+
+    .auth-footer a {
+      color: var(--purple-mid);
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .auth-footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="header">
+    <svg class="header-icon" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="2">
+      <path d="M2 12C2 12 6 5 12 5C18 5 22 12 22 12C22 12 18 19 12 19C6 19 2 12 2 12Z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </svg>
+    <h1>Eye Fatigue Tracker</h1>
+  </header>
+
+  <!-- Sign in form -->
+  <main class="page-center">
+    <div class="auth-card">
+      <div class="auth-card-title">Sign In</div>
+      <div class="auth-card-body">
+        <h2>Welcome back!</h2>
+
+        <div class="error-msg" id="login-error">
+          Incorrect username or password.
+        </div>
+
+        <div class="input-group">
+          <label for="username">Username:</label>
+          <input type="text" id="username"
+                 placeholder="name_lastname" autocomplete="username" />
+        </div>
+
+        <div class="input-group">
+          <label for="password">Password:</label>
+          <input type="password" id="password"
+                 placeholder="**********" autocomplete="current-password" />
+        </div>
+
+        <button class="btn btn-primary" onclick="handleLogin()">
+          Sign In
+        </button>
+
+        <div class="auth-footer">
+          Don't have an account? &nbsp;|&nbsp;
+          <a href="register.html">Register</a>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -157,6 +157,23 @@
       font-weight: 500;
       margin-bottom: 16px;
     }
+
+    .btn-end-calib {
+      background: #FF9999;
+      color: var(--white);
+      padding: 12px 24px;
+      border-radius: var(--radius-pill);
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 14px;
+      width: 100%;
+      margin-top: 24px;
+    }
+
+    .btn-end-calib:hover {
+      opacity: 0.85;
+    }
   </style>
 </head>
 <body>
@@ -221,6 +238,8 @@
 
         <div class="calib-timer" id="calib-timer">05:00</div>
         <div class="calib-timer-label">remaining</div>
+
+        <button class="btn-end-calib" onclick="window.location.href='dashboard.html'">End Calibration</button>
 
         <div class="calib-complete" id="calib-complete">
           <p>Calibration complete — taking you to your dashboard.</p>

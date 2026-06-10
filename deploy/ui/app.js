@@ -289,7 +289,7 @@ function initCalibration() {
       }
 
       setTimeout(() => {
-        window.location.href = "dashboard.html";
+        window.location.href = "loading.html";
       }, 2000);
     }
   }, 1000);

@@ -8,31 +8,80 @@ class PupilDetector:
     """Detect the pupil from a grayscale IR image and return pupil metrics."""
 
     # Tunable camera and pupil detection parameters                    #
-    ROI_SIZE        = 220          # Half-side of the search square (px)
-    ROI_MARGIN      = 20           # Pixel border ignored when locating darkest point
-    DARK_STEP       = 10           # Stride for darkest-point scan (speed vs precision)
-    DARK_PATCH      = 20           # Patch size summed when scoring darkness
-    THRESH_OFFSETS  = [5, 15, 25, 40]  # Added to darkest pixel value
-    DILATE_KERNEL   = 5            # Morphological dilation kernel size
-    DILATE_ITERS    = 2
-    AREA_MIN        = 400          # Minimum contour area (px²)
-    AREA_MAX        = 27_000       # Maximum contour area (px²)
-    ASPECT_MIN      = 0.20         # Minimum minor/major axis ratio (flatness gate)
-    OVERLAP_MIN     = 0.45         # Minimum ellipse border coverage ratio
+    ROI_SIZE         = 220          # Half-side of the search square (px)
+    ROI_MARGIN       = 20           # Pixel border ignored when locating darkest point
+    DARK_STEP        = 10           # Stride for darkest-point scan (speed vs precision)
+    DARK_PATCH       = 20           # Patch size summed when scoring darkness
+    TRACK_WINDOW     = 80           # Local search radius when reusing last pupil center
+    CLAHE_CLIP       = 2.0          # CLAHE contrast clip limit
+    CLAHE_TILE       = (8, 8)       # CLAHE local tile grid
+    ADAPTIVE_BLOCK   = 31           # Adaptive threshold block size (must be odd)
+    ADAPTIVE_C       = [2, 5, 8, 11]  # Constant subtracted from local mean
+    DILATE_KERNEL    = 5            # Morphological kernel size
+    DILATE_ITERS     = 2
+    AREA_MIN         = 400          # Minimum contour area (px²)
+    AREA_MAX         = 27_000       # Maximum contour area (px²)
+    ASPECT_MIN       = 0.4          # Minimum minor/major axis ratio (flatness gate)
+    OVERLAP_MIN      = 0.5          # Minimum ellipse border coverage ratio
+    CIRCULARITY_MIN  = 0.25         # Rejects jagged eyelash blobs
+    SOLIDITY_MIN     = 0.75         # Rejects concave / fragmented shapes
+    CENTER_MAX_DIST  = 70           # Max px between seed point and contour centroid
+
+    def __init__(self):
+        self._last_center: tuple[float, float] | None = None
 
     @staticmethod
-    def _find_darkest_point(grey_frame: np.ndarray) -> tuple[int, int]:
-        """Find the darkest patch in the image and return its center point."""
-        margin = PupilDetector.ROI_MARGIN
-        step   = PupilDetector.DARK_STEP
-        patch  = PupilDetector.DARK_PATCH
+    def _circularity(contour: np.ndarray) -> float:
+        area = cv2.contourArea(contour)
+        perimeter = cv2.arcLength(contour, True)
+        if perimeter == 0:
+            return 0.0
+        return (4 * math.pi * area) / (perimeter ** 2)
+
+    @staticmethod
+    def _solidity(contour: np.ndarray) -> float:
+        area = cv2.contourArea(contour)
+        hull = cv2.convexHull(contour)
+        hull_area = cv2.contourArea(hull)
+        return float(area / hull_area) if hull_area > 0 else 0.0
+
+    @staticmethod
+    def _ellipse_area(minor: float, major: float) -> float:
+        """Area of the fitted ellipse from its axis lengths."""
+        return math.pi * (minor / 2) * (major / 2)
+
+    @classmethod
+    def _apply_clahe(cls, grey_frame: np.ndarray) -> np.ndarray:
+        """Apply CLAHE to handle uneven IR illumination locally."""
+        clahe = cv2.createCLAHE(clipLimit=cls.CLAHE_CLIP, tileGridSize=cls.CLAHE_TILE)
+        return clahe.apply(grey_frame.astype(np.uint8))
+
+    @classmethod
+    def _find_darkest_point(
+        cls,
+        grey_frame: np.ndarray,
+        hint: tuple[float, float] | None = None,
+    ) -> tuple[int, int]:
+        """Find the darkest patch, preferring a local window around `hint`."""
+        margin = cls.ROI_MARGIN
+        step   = cls.DARK_STEP
+        patch  = cls.DARK_PATCH
         h, w   = grey_frame.shape
 
-        min_sum  = float('inf')
-        best_pt  = (w // 2, h // 2)        # sensible default
+        min_sum = float('inf')
+        best_pt = (int(hint[0]), int(hint[1])) if hint else (w // 2, h // 2)
 
-        for y in range(margin, h - margin - patch, step):
-            for x in range(margin, w - margin - patch, step):
+        if hint is not None:
+            hx, hy = int(hint[0]), int(hint[1])
+            x1 = max(margin, hx - cls.TRACK_WINDOW)
+            y1 = max(margin, hy - cls.TRACK_WINDOW)
+            x2 = min(w - margin - patch, hx + cls.TRACK_WINDOW)
+            y2 = min(h - margin - patch, hy + cls.TRACK_WINDOW)
+        else:
+            x1, y1, x2, y2 = margin, margin, w - margin - patch, h - margin - patch
+
+        for y in range(y1, y2, step):
+            for x in range(x1, x2, step):
                 s = int(grey_frame[y:y + patch, x:x + patch].sum())
                 if s < min_sum:
                     min_sum = s
@@ -73,155 +122,195 @@ class PupilDetector:
 
         return float(np.sum(overlap > 0)) / total_border if total_border > 0 else 0.0
 
-    @classmethod
-    def process(cls, grey_frame: np.ndarray) -> tuple[int, float, float, float]:
-        """Detect the pupil in a grayscale frame and return blink / pupil metrics."""
+    def process(self, grey_frame: np.ndarray) -> tuple[int, float]:
+        """Detect the pupil in a grayscale frame and return blink state and area."""
         h, w = grey_frame.shape
 
-        # 1. Contrast stretch
+        # 1. CLAHE — local contrast enhancement for uneven IR illumination
         min_val, max_val, _, _ = cv2.minMaxLoc(grey_frame)
         if max_val == min_val:
-            return 1, 0.0, 0.0, 0.0
+            return 1, 0.0
 
-        stretched = cv2.convertScaleAbs(
-            grey_frame,
-            alpha=255.0 / (max_val - min_val),
-            beta=-float(min_val)
-        )
+        enhanced = self._apply_clahe(grey_frame)
 
         # 2. Median blur
-        blurred = cv2.medianBlur(stretched, 9)
+        blurred = cv2.medianBlur(enhanced, 9)
 
-        # 3. Find the darkest region and use it as the search center.
-        dark_pt     = cls._find_darkest_point(blurred)
-        dark_value  = int(blurred[dark_pt[1], dark_pt[0]])
+        # 3. Seed search from last pupil center when available.
+        dark_pt = self._find_darkest_point(blurred, self._last_center)
 
-        # 4. Try several thresholds around the darkest pixel value.
-        kernel       = np.ones((cls.DILATE_KERNEL, cls.DILATE_KERNEL), np.uint8)
+        # 4. Try several adaptive-threshold constants for local brightness drift.
+        kernel       = np.ones((self.DILATE_KERNEL, self.DILATE_KERNEL), np.uint8)
         best_contour = None
         best_score   = 0.0
         best_area    = 0.0
 
-        for offset in cls.THRESH_OFFSETS:
-            thresh_val = min(dark_value + offset, 254)
-
-            _, binary = cv2.threshold(
-                blurred, thresh_val, 255, cv2.THRESH_BINARY_INV
+        for c_val in self.ADAPTIVE_C:
+            binary = cv2.adaptiveThreshold(
+                blurred,
+                255,
+                cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv2.THRESH_BINARY_INV,
+                self.ADAPTIVE_BLOCK,
+                c_val,
             )
 
             # Mask to ROI around the darkest region
-            binary = cls._mask_roi(binary, dark_pt, cls.ROI_SIZE // 2)
+            binary = self._mask_roi(binary, dark_pt, self.ROI_SIZE // 2)
 
-            # Morphological dilation bridges eyelash-induced gaps
-            dilated   = cv2.dilate(binary, kernel, iterations=cls.DILATE_ITERS)
+            # Close small eyelash gaps, then dilate to connect the pupil border
+            closed  = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=1)
+            dilated = cv2.dilate(closed, kernel, iterations=self.DILATE_ITERS)
 
             contours, _ = cv2.findContours(
                 dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
             )
 
             for contour in contours:
-                area = cv2.contourArea(contour)
-                if not (cls.AREA_MIN <= area <= cls.AREA_MAX):
-                    continue
                 if len(contour) < 5:
                     continue
 
-                coverage = cls._ellipse_overlap_score(contour, (h, w))
-                if coverage < cls.OVERLAP_MIN:
+                try:
+                    (_, _), (minor, major), _ = cv2.fitEllipse(contour)
+                except cv2.error:
                     continue
 
-                # Score rewards both a clean ellipse fit and a reasonably sized pupil
-                score = coverage * area
+                if major == 0 or (minor / major) < self.ASPECT_MIN:
+                    continue
+
+                ellipse_area = self._ellipse_area(minor, major)
+                if not (self.AREA_MIN <= ellipse_area <= self.AREA_MAX):
+                    continue
+
+                circularity = self._circularity(contour)
+                if circularity < self.CIRCULARITY_MIN:
+                    continue
+
+                solidity = self._solidity(contour)
+                if solidity < self.SOLIDITY_MIN:
+                    continue
+
+                moments = cv2.moments(contour)
+                if moments["m00"] == 0:
+                    continue
+                cx = moments["m10"] / moments["m00"]
+                cy = moments["m01"] / moments["m00"]
+                center_dist = math.hypot(cx - dark_pt[0], cy - dark_pt[1])
+                if center_dist > self.CENTER_MAX_DIST:
+                    continue
+
+                coverage = self._ellipse_overlap_score(contour, (h, w))
+                if coverage < self.OVERLAP_MIN:
+                    continue
+
+                proximity = 1.0 - min(center_dist / self.CENTER_MAX_DIST, 1.0)
+                score = (
+                    coverage * circularity * solidity
+                    * math.sqrt(ellipse_area) * (0.5 + 0.5 * proximity)
+                )
                 if score > best_score:
                     best_score   = score
                     best_contour = contour
-                    best_area    = area
+                    best_area    = ellipse_area
 
         if best_contour is None:
-            return 1, 0.0, 0.0, 0.0
+            self._last_center = None
+            return 1, 0.0
 
         # 5. Fit final ellipse
         try:
             (cx, cy), (minor, major), _ = cv2.fitEllipse(best_contour)
         except cv2.error:
-            return 1, 0.0, 0.0, 0.0
+            self._last_center = None
+            return 1, 0.0
 
         # 6. Axis-ratio sanity check (rejects eye corners and near-line shapes)
-        if major == 0 or (minor / major) < cls.ASPECT_MIN:
-            return 1, 0.0, 0.0, 0.0
+        if major == 0 or (minor / major) < self.ASPECT_MIN:
+            self._last_center = None
+            return 1, 0.0
 
-        return 0, round(cx, 2), round(cy, 2), round(best_area, 2)
+        self._last_center = (cx, cy)
+        pupil_area = self._ellipse_area(minor, major)
+        return 0, round(pupil_area, 2)
 
 
 class MetricStateTracker:
-    """Track blink timing, smoothed pupil size, and light level state."""
+    """Aggregate frame-rate pupil metrics into per-second feature rows."""
 
     BLINK_MIN_DURATION = 0.05   # seconds — ignore very short blinks
 
-    def __init__(self, ema_alpha: float = 0.15):
-        self.ema_alpha       = ema_alpha
-        self.ema_pupil_size  = 0.0
+    def __init__(self):
+        self._session_start = time.time()
+        self._current_second = 0
 
-        # IBI state
-        self.last_blink_time        = time.time()
-        self.effective_ibi          = 0.0
-        self.is_currently_blinking  = False
-        self._blink_onset: float    = 0.0   # timestamp of the blink's leading edge
+        self._pupil_samples: list[float] = []
 
-        # Light intensity state
-        self.sec_start_time   = time.time()
-        self.intensity_accum  = 0.0
-        self.frames_this_sec  = 0
-        self.light_intensity  = 0.0
+        self._last_blink_time = self._session_start
+        self._committed_ibi = 0.0
+        self._is_blinking = False
+        self._blink_onset = 0.0
+        self._ibi_at_second_end = 0.0
 
-    def update_light(self, grey_frame: np.ndarray, current_time: float) -> float:
-        """Update the 1-second average brightness and return it."""
-        self.intensity_accum += float(cv2.mean(grey_frame)[0])
-        self.frames_this_sec += 1
+    def _effective_ibi(self, now: float) -> float:
+        live = now - self._last_blink_time
+        return max(self._committed_ibi, live)
 
-        if current_time - self.sec_start_time >= 1.0:
-            self.light_intensity  = self.intensity_accum / self.frames_this_sec
-            self.intensity_accum  = 0.0
-            self.frames_this_sec  = 0
-            self.sec_start_time   = current_time
-
-        return round(self.light_intensity, 2)
-
-    def update_ibi(self, blink: int, current_time: float) -> float:
-        """Update blink timing and return the current inter-blink interval."""
+    def _update_blink_state(self, blink: int, now: float) -> None:
         if blink == 1:
-            if not self.is_currently_blinking:
-                # Rising edge — record onset but don't commit yet
-                self._blink_onset          = current_time
-                self.is_currently_blinking = True
+            if not self._is_blinking:
+                self._blink_onset = now
+                self._is_blinking = True
         else:
-            if self.is_currently_blinking:
-                # Falling edge — only commit if the blink lasted long enough
-                duration = current_time - self._blink_onset
-                if duration >= self.BLINK_MIN_DURATION:
-                    self.effective_ibi   = self._blink_onset - self.last_blink_time
-                    self.last_blink_time = self._blink_onset
-            self.is_currently_blinking = False
+            if self._is_blinking:
+                if now - self._blink_onset >= self.BLINK_MIN_DURATION:
+                    self._committed_ibi = self._blink_onset - self._last_blink_time
+                    self._last_blink_time = self._blink_onset
+            self._is_blinking = False
 
-        live_tslb        = current_time - self.last_blink_time
-        effective_output = max(self.effective_ibi, live_tslb)
-        return round(effective_output, 2)
+        self._ibi_at_second_end = self._effective_ibi(now)
 
-    def update_ema(self, blink: int, area: float) -> float:
-        """Update a smoothed pupil area value when a pupil is detected."""
-        if blink == 0:
-            if self.ema_pupil_size == 0.0:
-                self.ema_pupil_size = area      # cold start
-            else:
-                self.ema_pupil_size = (
-                    self.ema_alpha * area
-                    + (1 - self.ema_alpha) * self.ema_pupil_size
-                )
-        return round(self.ema_pupil_size, 2)
+    def _pupil_size_for_second(self) -> float:
+        if not self._pupil_samples:
+            return 0.0
+        return float(np.median(self._pupil_samples))
+
+    def _finalize_second(self, second_index: int) -> tuple[int, float, float]:
+        """Emit one per-second row: (second, ibi_seconds, pupil_area_px2)."""
+        return (
+            second_index + 1,
+            round(self._ibi_at_second_end, 2),
+            round(self._pupil_size_for_second(), 2),
+        )
+
+    def update_frame(
+        self, blink: int, area: float, now: float | None = None
+    ) -> tuple[int, float, float] | None:
+        """Ingest one frame; return a feature row when a full second has elapsed."""
+        now = now if now is not None else time.time()
+        elapsed_sec = int(now - self._session_start)
+
+        self._update_blink_state(blink, now)
+
+        if blink == 0 and area > 0.0:
+            self._pupil_samples.append(area)
+
+        if elapsed_sec <= self._current_second:
+            return None
+
+        result = None
+        while self._current_second < elapsed_sec:
+            result = self._finalize_second(self._current_second)
+            self._current_second += 1
+            self._pupil_samples = []
+
+        if blink == 0 and area > 0.0:
+            self._pupil_samples.append(area)
+
+        return result
 
 
 class USBPupilTracker:
-    """Control USB camera capture and process pupil frames."""
+    """Capture frames and emit per-second feature rows for downstream ML."""
 
     def __init__(
         self,
@@ -233,7 +322,6 @@ class USBPupilTracker:
         self.resolution   = resolution
         self.fps          = fps
         self.cap          = None
-        self.frame_count  = 0
 
         self.detector = PupilDetector()
         self.tracker  = MetricStateTracker()
@@ -252,8 +340,8 @@ class USBPupilTracker:
             )
         return True
 
-    def process_frame(self) -> tuple | None:
-        """Capture one frame, detect the pupil, and return metrics."""
+    def process_frame(self) -> tuple[int, float, float] | None:
+        """Capture one frame; return (second, ibi_sec, pupil_area_px2) once per second."""
         if self.cap is None or not self.cap.isOpened():
             return None
 
@@ -261,19 +349,9 @@ class USBPupilTracker:
         if not ret:
             return None
 
-        self.frame_count += 1
-        current_time = time.time()
-        grey_frame   = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-        # 1. Vision — detect pupil
-        blink, cx, cy, area = PupilDetector.process(grey_frame)
-
-        # 2. State — update temporal metrics
-        light = self.tracker.update_light(grey_frame, current_time)
-        ibi   = self.tracker.update_ibi(blink, current_time)
-        ema   = self.tracker.update_ema(blink, area)
-
-        return (self.frame_count, blink, cx, cy, area, ibi, ema, light)
+        grey_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        blink, area = self.detector.process(grey_frame)
+        return self.tracker.update_frame(blink, area, time.time())
 
     def end_session(self) -> None:
         """Release the camera resource."""

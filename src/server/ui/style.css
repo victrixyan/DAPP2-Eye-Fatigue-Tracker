@@ -1,0 +1,216 @@
+/* ── Variables ── */
+:root {
+  --purple-dark:   #2D1B69;
+  --purple-mid:    #4A3080;
+  --purple-light:  #7B6BA8;
+  --lavender:      #C4B5E0;
+  --lavender-soft: #EDE8F5;
+  --bg:            #F5F0FF;
+  --white:         #FFFFFF;
+  --text-dark:     #1A1035;
+  --text-mid:      #4A3080;
+  --text-light:    #7B6BA8;
+  --orange:        #FF6B35;
+  --green:         #4CAF50;
+  --red:           #F44336;
+  --radius-sm:     8px;
+  --radius-md:     16px;
+  --radius-lg:     24px;
+  --radius-pill:   999px;
+  --shadow:        0 2px 12px rgba(45, 27, 105, 0.1);
+}
+
+/* ── Reset ── */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text-dark);
+  min-height: 100vh;
+}
+
+/* ── Header ── */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 24px;
+  background: var(--white);
+  border-bottom: 1.5px solid var(--lavender);
+}
+
+.header-icon {
+  width: 24px;
+  height: 24px;
+  color: var(--purple-dark);
+}
+
+.header h1 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--purple-dark);
+}
+
+/* ── Cards ── */
+.card {
+  background: var(--white);
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--lavender);
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+
+.card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dark);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1.5px solid var(--lavender-soft);
+}
+
+/* ── Inputs ── */
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.input-group label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-mid);
+}
+
+.input-group input {
+  padding: 12px 18px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--lavender);
+  background: var(--lavender-soft);
+  font-size: 14px;
+  color: var(--text-dark);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.input-group input:focus {
+  border-color: var(--purple-mid);
+}
+
+/* ── Buttons ── */
+.btn {
+  padding: 12px 24px;
+  border-radius: var(--radius-pill);
+  border: none;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.btn:hover { opacity: 0.85; }
+
+.btn-primary {
+  background: var(--purple-mid);
+  color: var(--white);
+  width: 100%;
+}
+
+.btn-start  { background: var(--green);  color: var(--white); }
+.btn-pause  { background: var(--orange); color: var(--white); }
+.btn-end    { background: var(--red);    color: var(--white); }
+
+/* ── Toggle tabs ── */
+.toggle-group {
+  display: inline-flex;
+  background: var(--lavender-soft);
+  border-radius: var(--radius-pill);
+  padding: 3px;
+  gap: 2px;
+}
+
+.toggle-group button {
+  padding: 5px 14px;
+  border-radius: var(--radius-pill);
+  border: none;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-light);
+  transition: all 0.2s;
+}
+
+.toggle-group button.active {
+  background: var(--purple-dark);
+  color: var(--white);
+}
+
+/* ── Accordion ── */
+.accordion-item {
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--lavender);
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+
+.accordion-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  cursor: pointer;
+  background: var(--white);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--purple-dark);
+}
+
+.accordion-header:hover {
+  background: var(--lavender-soft);
+}
+
+.accordion-body {
+  display: none;
+  padding: 14px 18px;
+  font-size: 13px;
+  color: var(--text-mid);
+  line-height: 1.6;
+  background: var(--white);
+  border-top: 1.5px solid var(--lavender-soft);
+}
+
+.accordion-body.open {
+  display: block;
+}
+
+/* ── Error message ── */
+.error-msg {
+  font-size: 13px;
+  color: var(--red);
+  margin-bottom: 10px;
+  display: none;
+}
+
+.error-msg.visible {
+  display: block;
+}
+
+/* ── Metric value display ── */
+.metric-value {
+  font-size: 36px;
+  font-weight: 700;
+  color: var(--purple-dark);
+  text-align: center;
+  padding: 12px 0;
+}
+
+.metric-value.orange {
+  color: var(--orange);
+}

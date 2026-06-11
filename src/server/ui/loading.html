@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Eye Fatigue Tracker — Loading</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: var(--bg);
+    }
+
+    .loading-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 40px;
+    }
+
+    .header {
+      width: 100%;
+      border-bottom: 1.5px solid var(--lavender);
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+
+    .loading-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 32px;
+      margin-top: 80px;
+    }
+
+    .tree-canvas {
+      width: 100%;
+      max-width: 600px;
+      height: 400px;
+    }
+
+    .loading-text {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--purple-dark);
+      text-align: center;
+      letter-spacing: 1px;
+    }
+
+    /* Node animation styles */
+    @keyframes nodeAppear {
+      0% {
+        opacity: 0;
+        transform: scale(0);
+      }
+      50% {
+        opacity: 1;
+      }
+      100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    @keyframes lineAppear {
+      0% {
+        opacity: 0;
+        stroke-dasharray: 100;
+        stroke-dashoffset: 100;
+      }
+      100% {
+        opacity: 1;
+        stroke-dasharray: 100;
+        stroke-dashoffset: 0;
+      }
+    }
+
+    .tree-node {
+      animation: nodeAppear 0.4s ease-out forwards;
+      transform-origin: center;
+    }
+
+    .tree-line {
+      animation: lineAppear 0.5s ease-out forwards;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="header">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 14px 24px;">
+      <svg class="header-icon" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2">
+        <path d="M2 12C2 12 6 5 12 5C18 5 22 12 22 12C22 12 18 19 12 19C6 19 2 12 2 12Z"/>
+        <circle cx="12" cy="12" r="3"/>
+      </svg>
+      <h1>Eye Fatigue Tracker</h1>
+    </div>
+  </header>
+
+  <div class="loading-content">
+    <svg id="tree-svg" class="tree-canvas" viewBox="0 0 600 400" preserveAspectRatio="xMidYMid meet">
+      <!-- Tree will be drawn here -->
+    </svg>
+    <div class="loading-text">Preparing your session...</div>
+  </div>
+
+  <script>
+    const svg = document.getElementById('tree-svg');
+    const NS = 'http://www.w3.org/2000/svg';
+
+    // Color scheme from style.css
+    const nodeColor = '#4A3080';
+    const lineColor = '#7B6BA8';
+    const nodeRadius = 12;
+
+    // Tree structure: positions for a binary tree animation
+    // Level 0 (root): 1 node
+    // Level 1: 2 nodes
+    // Level 2: 4 nodes
+    // Level 3: 8 nodes
+
+    const treeStructure = [
+      // Level 0 - Root
+      { id: 0, x: 300, y: 40, level: 0 },
+      // Level 1 - Children of root
+      { id: 1, x: 150, y: 120, level: 1, parent: 0 },
+      { id: 2, x: 450, y: 120, level: 1, parent: 0 },
+      // Level 2 - Grandchildren
+      { id: 3, x: 75, y: 200, level: 2, parent: 1 },
+      { id: 4, x: 225, y: 200, level: 2, parent: 1 },
+      { id: 5, x: 375, y: 200, level: 2, parent: 2 },
+      { id: 6, x: 525, y: 200, level: 2, parent: 2 },
+      // Level 3 - Great-grandchildren
+      { id: 7, x: 30, y: 280, level: 3, parent: 3 },
+      { id: 8, x: 120, y: 280, level: 3, parent: 3 },
+      { id: 9, x: 180, y: 280, level: 3, parent: 4 },
+      { id: 10, x: 270, y: 280, level: 3, parent: 4 },
+      { id: 11, x: 330, y: 280, level: 3, parent: 5 },
+      { id: 12, x: 420, y: 280, level: 3, parent: 5 },
+      { id: 13, x: 480, y: 280, level: 3, parent: 6 },
+      { id: 14, x: 570, y: 280, level: 3, parent: 6 },
+    ];
+
+    function drawTree() {
+      // First pass: draw all lines with staggered animation
+      const edges = [];
+      treeStructure.forEach(node => {
+        if (node.parent !== undefined) {
+          const parentNode = treeStructure.find(n => n.id === node.parent);
+          edges.push({ parent: parentNode, child: node });
+        }
+      });
+
+      // Draw lines
+      edges.forEach((edge, idx) => {
+        const line = document.createElementNS(NS, 'line');
+        line.setAttribute('x1', edge.parent.x);
+        line.setAttribute('y1', edge.parent.y);
+        line.setAttribute('x2', edge.child.x);
+        line.setAttribute('y2', edge.child.y);
+        line.setAttribute('stroke', lineColor);
+        line.setAttribute('stroke-width', '2');
+        line.setAttribute('class', 'tree-line');
+        line.style.animationDelay = `${idx * 0.1}s`;
+        svg.appendChild(line);
+      });
+
+      // Draw nodes
+      treeStructure.forEach((node, idx) => {
+        const circle = document.createElementNS(NS, 'circle');
+        circle.setAttribute('cx', node.x);
+        circle.setAttribute('cy', node.y);
+        circle.setAttribute('r', nodeRadius);
+        circle.setAttribute('fill', nodeColor);
+        circle.setAttribute('class', 'tree-node');
+        circle.style.animationDelay = `${idx * 0.15}s`;
+        svg.appendChild(circle);
+      });
+    }
+
+    function redirectToSession() {
+      window.location.href = 'session.html';
+    }
+
+    // Start animation
+    drawTree();
+
+    // Redirect after 5 seconds
+    setTimeout(redirectToSession, 5000);
+  </script>
+</body>
+</html>

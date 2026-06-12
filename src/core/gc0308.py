@@ -1,7 +1,25 @@
-import cv2
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "numpy>=1.26",
+#     "opencv-python-headless>=4.8",
+# ]
+# ///
+"""USB camera capture and per-second pupil / blink metrics for the ML pipeline."""
+
+from __future__ import annotations
+
+import csv
+import sys
 import time
 import math
+from pathlib import Path
+from typing import Any
+
+import cv2
 import numpy as np
+
+CALIBRATION_COLUMNS = ["uid", "second", "ibi", "pupil_area"]
 
 
 class PupilDetector:
@@ -328,7 +346,10 @@ class USBPupilTracker:
 
     def init_camera(self) -> bool:
         """Open and configure the USB camera for capture."""
-        self.cap = cv2.VideoCapture(self.camera_index, cv2.CAP_V4L2)
+        if sys.platform == "linux":
+            self.cap = cv2.VideoCapture(self.camera_index, cv2.CAP_V4L2)
+        else:
+            self.cap = cv2.VideoCapture(self.camera_index)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH,  self.resolution[0])
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.resolution[1])
         self.cap.set(cv2.CAP_PROP_FPS,          self.fps)
@@ -365,3 +386,75 @@ class USBPupilTracker:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.end_session()
+
+
+def append_calibration_row(
+    csv_path: Path | str,
+    uid: str,
+    second: int,
+    ibi: float,
+    pupil_area: float,
+) -> None:
+    """Append one per-second calibration row to the session CSV."""
+    with Path(csv_path).open("a", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=CALIBRATION_COLUMNS)
+        writer.writerow(
+            {
+                "uid": uid,
+                "second": second,
+                "ibi": ibi,
+                "pupil_area": pupil_area,
+            }
+        )
+
+
+def camera_worker_main(
+    stop_event: Any,
+    pause_event: Any,
+    mode: str,
+    uid: str,
+    calibration_csv: str | None,
+    data_queue: Any | None,
+    camera_index: int = 0,
+) -> None:
+    """
+    Child process entrypoint — capture frames and emit one row per second.
+
+    calibration mode: append rows to calibration_csv
+    live mode: push dict rows onto data_queue for the ML worker (Phase 4)
+    """
+    tracker = USBPupilTracker(camera_index=camera_index)
+
+    try:
+        tracker.init_camera()
+    except RuntimeError as exc:
+        print(f"[camera_worker] failed to open camera: {exc}", file=sys.stderr)
+        return
+
+    try:
+        while not stop_event.is_set():
+            if pause_event.is_set():
+                time.sleep(0.05)
+                continue
+
+            row = tracker.process_frame()
+            if row is None:
+                continue
+
+            second, ibi, pupil_area = row
+
+            if mode == "calibration":
+                if calibration_csv is None:
+                    continue
+                append_calibration_row(calibration_csv, uid, second, ibi, pupil_area)
+            elif mode == "live" and data_queue is not None:
+                data_queue.put(
+                    {
+                        "uid": uid,
+                        "second": second,
+                        "ibi": ibi,
+                        "pupil_area": pupil_area,
+                    }
+                )
+    finally:
+        tracker.end_session()

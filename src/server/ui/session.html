@@ -7,7 +7,6 @@
   <link rel="stylesheet" href="style.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    /* Session-specific layout */
     .session-container {
       display: grid;
       grid-template-columns: 320px 1fr 1fr 1fr;
@@ -16,7 +15,6 @@
       min-height: calc(100vh - 53px);
     }
 
-    /* Header adjustments */
     .header {
       display: flex;
       justify-content: flex-start;
@@ -24,7 +22,6 @@
       gap: 10px;
     }
 
-    /* Profile Card */
     .profile-card {
       background: var(--lavender-soft);
       border-radius: var(--radius-lg);
@@ -98,6 +95,10 @@
       margin-bottom: 12px;
     }
 
+    .btn-pause.continue {
+      background: var(--green);
+    }
+
     .btn-pause:hover {
       opacity: 0.85;
     }
@@ -118,7 +119,6 @@
       opacity: 0.85;
     }
 
-    /* Current Card */
     .current-card {
       background: var(--lavender-soft);
       border-radius: var(--radius-lg);
@@ -160,7 +160,6 @@
       font-weight: 500;
     }
 
-    /* Info Cards */
     .info-card {
       background: var(--lavender-soft);
       border-radius: var(--radius-lg);
@@ -185,7 +184,6 @@
       line-height: 1.4;
     }
 
-    /* Session Trends */
     .trends-card {
       background: var(--lavender-soft);
       border-radius: var(--radius-lg);
@@ -217,7 +215,6 @@
 </head>
 <body>
 
-  <!-- Header -->
   <header class="header">
     <svg class="header-icon" viewBox="0 0 24 24" fill="none"
          stroke="currentColor" stroke-width="2">
@@ -227,10 +224,8 @@
     <h1>Eye Fatigue Tracker</h1>
   </header>
 
-  <!-- Session -->
   <main class="session-container">
 
-    <!-- Profile Card -->
     <div class="profile-card">
       <h2>Profile</h2>
       <div class="profile-icon">
@@ -240,35 +235,26 @@
         </svg>
       </div>
       <div class="profile-text" id="profile-username">User</div>
-      <script>
-        // Set username immediately
-        const currentUser = localStorage.getItem('eft_user');
-        if (currentUser) {
-          document.getElementById('profile-username').textContent = currentUser;
-        }
-      </script>
       <div class="session-timer-label">Session Timer</div>
       <div class="session-timer" id="session-timer">00:00:00</div>
-      <button class="btn-pause" id="btn-pause" onclick="handlePause()">Pause</button>
-      <button class="btn-end" onclick="handleEndSession()">End Session</button>
+      <button class="btn-pause" id="btn-pause" type="button" onclick="handlePause()">Pause</button>
+      <button class="btn-end" type="button" onclick="handleEndSession()">End Session</button>
     </div>
 
-    <!-- Current Card -->
     <div class="current-card">
       <h2>Current</h2>
       <div class="metrics-row">
         <div class="metric">
-          <div class="metric-number" id="current-fatigue">6/10</div>
+          <div class="metric-number" id="current-fatigue">0.0/10</div>
           <div class="metric-label">fatigue score</div>
         </div>
         <div class="metric">
-          <div class="metric-number" id="current-blinks">18</div>
+          <div class="metric-number" id="current-blinks">0</div>
           <div class="metric-label">blinks per minute</div>
         </div>
       </div>
     </div>
 
-    <!-- Info Cards -->
     <div class="info-card">
       <div class="question">?</div>
       <p>What is Computer Vision Syndrome?</p>
@@ -279,7 +265,6 @@
       <p>How to improve eye health?</p>
     </div>
 
-    <!-- Session Trends -->
     <div class="trends-card">
       <div class="trends-header">
         <h2>Session Trends</h2>
@@ -292,198 +277,5 @@
   </main>
 
   <script src="app.js"></script>
-  <script>
-    let sessionTimer = null;
-    let timerSeconds = 0;
-    let isPaused = false;
-    let sessionChart = null;
-    let sessionTrendsData = [];
-    let currentDataIndex = 0;
-
-    // Load CSV data
-    async function loadSessionTrendsCSV() {
-      try {
-        const response = await fetch('session_trends.csv');
-        const text = await response.text();
-        const lines = text.trim().split('\n').filter(line => line.trim());
-        const headers = lines[0].split(',').map(h => h.trim());
-
-        for (let i = 1; i < lines.length; i++) {
-          const values = lines[i].split(',').map(v => v.trim());
-          const row = {};
-          headers.forEach((header, idx) => {
-            const value = values[idx];
-            row[header] = isNaN(value) ? value : parseFloat(value);
-          });
-          sessionTrendsData.push(row);
-        }
-        console.log('Session trends data loaded:', sessionTrendsData);
-        return sessionTrendsData;
-      } catch (error) {
-        console.error('Error loading session trends CSV:', error);
-        return [];
-      }
-    }
-
-    function initSession() {
-      const username = getSession();
-      console.log('Session username:', username);
-      if (!username) {
-        window.location.href = 'index.html';
-        return;
-      }
-
-      // Display username
-      const usernameEl = document.getElementById('profile-username');
-      console.log('Username element:', usernameEl);
-      if (usernameEl) {
-        usernameEl.textContent = username;
-        console.log('Username set to:', username);
-      }
-
-      // Start timer
-      startSessionTimer();
-
-      // Load CSV and initialize chart
-      loadSessionTrendsCSV().then(data => {
-        if (data.length > 0) {
-          initSessionChart();
-          // Simulate real-time data updates
-          simulateSessionData();
-        }
-      });
-    }
-
-    function startSessionTimer() {
-      if (sessionTimer) return;
-      isPaused = false;
-      sessionTimer = setInterval(() => {
-        timerSeconds++;
-        updateTimerDisplay();
-      }, 1000);
-    }
-
-    function updateTimerDisplay() {
-      const h = String(Math.floor(timerSeconds / 3600)).padStart(2, '0');
-      const m = String(Math.floor((timerSeconds % 3600) / 60)).padStart(2, '0');
-      const s = String(timerSeconds % 60).padStart(2, '0');
-      document.getElementById('session-timer').textContent = `${h}:${m}:${s}`;
-    }
-
-    function handlePause() {
-      if (isPaused) {
-        sessionTimer = setInterval(() => {
-          timerSeconds++;
-          updateTimerDisplay();
-        }, 1000);
-        isPaused = false;
-        document.getElementById('btn-pause').textContent = 'Pause';
-      } else {
-        clearInterval(sessionTimer);
-        sessionTimer = null;
-        isPaused = true;
-        document.getElementById('btn-pause').textContent = 'Resume';
-      }
-    }
-
-    function handleEndSession() {
-      clearInterval(sessionTimer);
-      sessionTimer = null;
-
-      // Save session data
-      const username = getSession();
-      const users = getUsers();
-      if (username && users[username]) {
-        users[username].lastRecording = new Date().toLocaleDateString('en-GB', {
-          day: '2-digit', month: '2-digit', year: 'numeric'
-        });
-        saveUsers(users);
-      }
-
-      // Redirect to dashboard
-      setTimeout(() => {
-        window.location.href = 'dashboard.html';
-      }, 500);
-    }
-
-    function initSessionChart() {
-      const ctx = document.getElementById('chart-session');
-      if (!ctx) {
-        console.error('Canvas element not found');
-        return;
-      }
-
-      if (sessionChart) {
-        sessionChart.destroy();
-      }
-
-      const labels = sessionTrendsData.map(d => d.Time);
-      const data = sessionTrendsData.map(d => d['Fatigue Score']);
-
-      sessionChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: labels,
-          datasets: [{
-            label: 'Fatigue Score',
-            data: data,
-            borderColor: '#3D2D7A',
-            backgroundColor: 'transparent',
-            borderWidth: 3,
-            fill: false,
-            tension: 0.4,
-            pointRadius: 5,
-            pointBackgroundColor: '#3D2D7A',
-            pointBorderColor: '#FFFFFF',
-            pointBorderWidth: 2,
-          }],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: {
-            x: {
-              grid: { display: false },
-              ticks: { font: { size: 11 }, color: '#7B6BA8' },
-            },
-            y: {
-              grid: { color: 'rgba(196,181,224,0.4)' },
-              ticks: { font: { size: 11 }, color: '#7B6BA8' },
-              beginAtZero: true,
-              max: 5.5,
-            },
-          },
-        },
-      });
-    }
-
-    function simulateSessionData() {
-      // Update metrics and chart data periodically
-      const updateInterval = setInterval(() => {
-        if (currentDataIndex < sessionTrendsData.length) {
-          const currentData = sessionTrendsData[currentDataIndex];
-          const maxScore = 5.5;
-          document.getElementById('current-fatigue').textContent = currentData['Fatigue Score'].toFixed(1) + '/' + maxScore;
-          document.getElementById('current-blinks').textContent = Math.round(15 + Math.random() * 10);
-          currentDataIndex++;
-
-          // Update chart with accumulated data
-          if (sessionChart) {
-            const newLabels = sessionTrendsData.slice(0, currentDataIndex).map(d => d.Time);
-            const newData = sessionTrendsData.slice(0, currentDataIndex).map(d => d['Fatigue Score']);
-            sessionChart.data.labels = newLabels;
-            sessionChart.data.datasets[0].data = newData;
-            sessionChart.update();
-          }
-        } else {
-          clearInterval(updateInterval);
-        }
-      }, 3000); // Update every 3 seconds
-    }
-
-    // Initialize on page load
-    document.addEventListener('DOMContentLoaded', initSession);
-  </script>
 </body>
 </html>

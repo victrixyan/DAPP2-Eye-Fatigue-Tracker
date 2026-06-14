@@ -51,6 +51,7 @@ UID_PATTERN = re.compile(r"^[a-z0-9_]+$")
 
 class SessionPhase(str, Enum):
     IDLE = "idle"
+    ADJUSTING = "adjusting"
     CALIBRATING = "calibrating"
     TRAINING = "training"
     LIVE = "live"
@@ -64,6 +65,8 @@ class CameraWorkerHandle:
     stop_event: Any
     pause_event: Any
     data_queue: Any | None = None
+    relay_stop: threading.Event | None = None
+    relay_thread: threading.Thread | None = None
 
 
 @dataclass
@@ -95,6 +98,7 @@ class RuntimeSession:
     latest_fatigue: float = 0.0
     latest_blink_rate: float = 0.0
     training_error: str | None = None
+    blink_state: str = "OPEN"
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
 
@@ -128,6 +132,10 @@ class HistoryResponse(BaseModel):
     total_sessions: int
     last_session: dict[str, Any] | None
     sessions: list[dict[str, Any]]
+
+
+class BlinkStateResponse(BaseModel):
+    state: str
 
 
 # --- filesystem helpers ---
@@ -275,6 +283,11 @@ def stop_camera_worker() -> None:
     if handle is None:
         return
 
+    if handle.relay_stop is not None:
+        handle.relay_stop.set()
+    if handle.relay_thread is not None:
+        handle.relay_thread.join(timeout=3)
+
     handle.stop_event.set()
     handle.process.join(timeout=8)
     if handle.process.is_alive():
@@ -282,13 +295,41 @@ def stop_camera_worker() -> None:
         handle.process.join(timeout=3)
 
 
+def _blink_relay(blink_queue: Any, relay_stop: threading.Event) -> None:
+    """Read per-frame blink labels from the camera worker."""
+    while not relay_stop.is_set():
+        try:
+            message = blink_queue.get(timeout=0.2)
+        except queue.Empty:
+            continue
+
+        with runtime._lock:
+            if runtime.phase == SessionPhase.ADJUSTING:
+                runtime.blink_state = message["state"]
+
+
 def start_camera_worker(*, mode: str, uid: str, calibration_csv: Path | None) -> None:
-    """Spawn the camera worker in calibration or live mode."""
+    """Spawn the camera worker in adjust, calibration, or live mode."""
     stop_camera_worker()
 
     stop_event = MP_CTX.Event()
     pause_event = MP_CTX.Event()
-    data_queue = MP_CTX.Queue(maxsize=64) if mode == "live" else None
+    data_queue: Any | None = None
+    relay_stop: threading.Event | None = None
+    relay_thread: threading.Thread | None = None
+
+    if mode in ("live", "adjust"):
+        data_queue = MP_CTX.Queue(maxsize=1 if mode == "adjust" else 64)
+
+    if mode == "adjust":
+        relay_stop = threading.Event()
+        relay_thread = threading.Thread(
+            target=_blink_relay,
+            args=(data_queue, relay_stop),
+            daemon=True,
+            name="blink-relay",
+        )
+        relay_thread.start()
 
     process = MP_CTX.Process(
         target=camera_worker_main,
@@ -311,6 +352,8 @@ def start_camera_worker(*, mode: str, uid: str, calibration_csv: Path | None) ->
             stop_event=stop_event,
             pause_event=pause_event,
             data_queue=data_queue,
+            relay_stop=relay_stop,
+            relay_thread=relay_thread,
         )
 
 
@@ -523,6 +566,46 @@ def session_status() -> SessionStatusResponse:
         calibration_csv=str(calibration_csv) if calibration_csv else None,
         calibration_rows=cal_rows,
     )
+
+
+@app.post("/api/session/start-adjust")
+def start_adjust(body: UidRequest) -> dict[str, str]:
+    """Open the camera for live blink-state preview before calibration."""
+    uid = normalize_uid(body.uid)
+
+    with runtime._lock:
+        if runtime.phase != SessionPhase.IDLE:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Cannot start adjust while phase is '{runtime.phase.value}'.",
+            )
+        runtime.uid = uid
+        runtime.blink_state = "OPEN"
+        runtime.phase = SessionPhase.ADJUSTING
+
+    start_camera_worker(mode="adjust", uid=uid, calibration_csv=None)
+    return {"phase": SessionPhase.ADJUSTING.value}
+
+
+@app.post("/api/session/stop-adjust")
+def stop_adjust() -> dict[str, str]:
+    """Stop the camera preview and return to idle."""
+    require_phase(SessionPhase.ADJUSTING)
+
+    stop_camera_worker()
+
+    with runtime._lock:
+        runtime.phase = SessionPhase.IDLE
+        runtime.uid = None
+        runtime.blink_state = "OPEN"
+
+    return {"phase": SessionPhase.IDLE.value}
+
+
+@app.get("/api/session/blink-state", response_model=BlinkStateResponse)
+def blink_state() -> BlinkStateResponse:
+    with runtime._lock:
+        return BlinkStateResponse(state=runtime.blink_state)
 
 
 @app.post("/api/session/start-calibration")

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Eye Fatigue Tracker — Adjust Camera</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .page-center {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: calc(100vh - 53px);
+      padding: 24px;
+    }
+
+    .adjust-card {
+      background: var(--lavender-soft);
+      border-radius: 28px;
+      width: min(92vw, 420px);
+      aspect-ratio: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      padding: 40px 32px;
+      text-align: center;
+    }
+
+    .eye-icon {
+      width: 72px;
+      height: 72px;
+      color: var(--purple-dark);
+    }
+
+    .adjust-title {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--purple-dark);
+    }
+
+    .adjust-sub {
+      font-size: 14px;
+      color: var(--text-mid);
+      line-height: 1.5;
+      max-width: 280px;
+    }
+
+    .blink-state {
+      font-size: 56px;
+      font-weight: 700;
+      color: var(--purple-dark);
+      letter-spacing: 2px;
+      min-height: 68px;
+      transition: opacity 0.15s ease;
+    }
+
+    .blink-state.open {
+      opacity: 0.85;
+    }
+
+    .btn-next {
+      background: var(--green);
+      color: var(--white);
+      padding: 12px 48px;
+      border-radius: var(--radius-pill);
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 15px;
+      margin-top: 8px;
+    }
+
+    .btn-next:hover {
+      opacity: 0.85;
+    }
+
+    .btn-next:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="header">
+    <svg class="header-icon" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="2">
+      <path d="M2 12C2 12 6 5 12 5C18 5 22 12 22 12C22 12 18 19 12 19C6 19 2 12 2 12Z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </svg>
+    <h1>Eye Fatigue Tracker</h1>
+  </header>
+
+  <main class="page-center">
+    <div class="adjust-card">
+      <svg class="eye-icon" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="1.5">
+        <path d="M2 12C2 12 6 5 12 5C18 5 22 12 22 12C22 12 18 19 12 19C6 19 2 12 2 12Z"/>
+        <circle cx="12" cy="12" r="3"/>
+      </svg>
+
+      <div class="adjust-title">Adjust the Camera</div>
+      <div class="adjust-sub">Until your blinks match states shown below</div>
+
+      <div class="blink-state open" id="blink-state">OPEN</div>
+
+      <button class="btn-next" id="btn-next" type="button">Next</button>
+    </div>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

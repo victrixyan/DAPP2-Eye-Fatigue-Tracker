@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import queue as queue_module
 import sys
 import time
 import math
@@ -354,6 +355,19 @@ class USBPupilTracker:
             )
         return True
 
+    def process_blink_frame(self) -> str | None:
+        """Capture one frame and return the current blink state label."""
+        if self.cap is None or not self.cap.isOpened():
+            return None
+
+        ret, frame = self.cap.read()
+        if not ret:
+            return None
+
+        grey_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        blink, _ = self.detector.process(grey_frame)
+        return "BLINK" if blink == 1 else "OPEN"
+
     def process_frame(self) -> tuple[int, float, float] | None:
         """Capture one frame; return (second, ibi_sec, pupil_area_px2) once per second."""
         if self.cap is None or not self.cap.isOpened():
@@ -414,7 +428,8 @@ def camera_worker_main(
     Child process entrypoint — capture frames and emit one row per second.
 
     calibration mode: append rows to calibration_csv
-    live mode: push dict rows onto data_queue for the ML worker (Phase 4)
+    live mode: push dict rows onto data_queue for the ML worker
+    adjust mode: push BLINK/OPEN state onto data_queue each frame
     """
     tracker = USBPupilTracker(camera_index=camera_index)
 
@@ -428,6 +443,20 @@ def camera_worker_main(
         while not stop_event.is_set():
             if pause_event.is_set():
                 time.sleep(0.05)
+                continue
+
+            if mode == "adjust":
+                if data_queue is None:
+                    time.sleep(0.05)
+                    continue
+                state = tracker.process_blink_frame()
+                if state is None:
+                    continue
+                try:
+                    data_queue.get_nowait()
+                except queue_module.Empty:
+                    pass
+                data_queue.put({"state": state})
                 continue
 
             row = tracker.process_frame()

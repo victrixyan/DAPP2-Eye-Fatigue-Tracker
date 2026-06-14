@@ -112,7 +112,7 @@ function signOut() {
 }
 
 function handleNewSession() {
-  window.location.href = "calibration.html";
+  window.location.href = "adjust_device.html";
 }
 
 // ── Utilities ──
@@ -351,6 +351,64 @@ async function initDashboard() {
 
   renderCalendar(dashboardHistory.sessions);
   setTrend("day", document.querySelector("#trend-toggle button.active"));
+}
+
+// ── Camera adjust (pre-calibration) ──
+
+let blinkPollInterval = null;
+
+function updateBlinkDisplay(state) {
+  const el = document.getElementById("blink-state");
+  if (!el) return;
+  el.textContent = state;
+  el.classList.toggle("open", state === "OPEN");
+}
+
+async function handleAdjustNext() {
+  const btn = document.getElementById("btn-next");
+  if (btn) btn.disabled = true;
+
+  if (blinkPollInterval) {
+    clearInterval(blinkPollInterval);
+    blinkPollInterval = null;
+  }
+
+  try {
+    await apiPost("/api/session/stop-adjust");
+  } catch (err) {
+    console.error(err);
+  }
+
+  window.location.href = "calibration.html";
+}
+
+async function initAdjustDevice() {
+  const username = requireAuth();
+  if (!username) return;
+
+  const btn = document.getElementById("btn-next");
+  if (btn) btn.onclick = handleAdjustNext;
+
+  try {
+    await apiPost("/api/session/start-adjust", { uid: username });
+  } catch (err) {
+    updateBlinkDisplay("ERROR");
+    console.error(err);
+    return;
+  }
+
+  blinkPollInterval = setInterval(async () => {
+    try {
+      const data = await apiGet("/api/session/blink-state");
+      updateBlinkDisplay(data.state);
+    } catch (err) {
+      console.error(err);
+    }
+  }, 150);
+
+  window.addEventListener("beforeunload", () => {
+    fetch("/api/session/stop-adjust", { method: "POST", keepalive: true });
+  });
 }
 
 // ── Calibration ──
@@ -627,6 +685,12 @@ async function initSession() {
 // ── Page bootstrap ──
 
 function autoInit() {
+  if (document.getElementById("blink-state") &&
+      document.getElementById("btn-next")) {
+    initAdjustDevice();
+    return;
+  }
+
   if (document.getElementById("calib-timer")) {
     const endBtn = document.querySelector(".btn-end-calib");
     if (endBtn) endBtn.onclick = handleEndCalibration;

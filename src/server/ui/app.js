@@ -245,6 +245,21 @@ function renderCalendar(sessions) {
   }
 }
 
+function showTrendsEmpty(show) {
+  const empty = document.getElementById("trends-empty");
+  const canvas = document.getElementById("chart-fatigue");
+  const container = document.getElementById("trends-chart-container");
+  if (!empty || !canvas) return;
+
+  empty.hidden = !show;
+  if (container) container.classList.toggle("is-empty", show);
+
+  if (show && fatigueChart) {
+    fatigueChart.destroy();
+    fatigueChart = null;
+  }
+}
+
 function renderFatigueChart(labels, values, animate) {
   const canvas = document.getElementById("chart-fatigue");
   if (!canvas) return;
@@ -296,6 +311,13 @@ function renderFatigueChart(labels, values, animate) {
 
 function setTrend(view, btn) {
   if (!dashboardHistory) return;
+
+  if (!dashboardHistory.sessions.length) {
+    showTrendsEmpty(true);
+    return;
+  }
+
+  showTrendsEmpty(false);
 
   document.querySelectorAll("#trend-toggle button").forEach((b) =>
     b.classList.remove("active")
@@ -350,7 +372,12 @@ async function initDashboard() {
   }
 
   renderCalendar(dashboardHistory.sessions);
-  setTrend("day", document.querySelector("#trend-toggle button.active"));
+
+  if (!dashboardHistory.sessions.length) {
+    showTrendsEmpty(true);
+  } else {
+    setTrend("day", document.querySelector("#trend-toggle button.active"));
+  }
 }
 
 // ── Camera adjust (pre-calibration) ──

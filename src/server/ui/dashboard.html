@@ -223,7 +223,20 @@
       position: relative;
       width: 100%;
       height: 280px;
-      display: block;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .chart-container.is-empty canvas {
+      display: none;
+    }
+
+    .trends-empty {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-mid);
+      text-align: center;
     }
 
     .chart-container canvas {
@@ -355,7 +368,8 @@
           <button onclick="setTrend('month', this)">Month</button>
         </div>
       </div>
-      <div class="chart-container">
+      <div class="chart-container" id="trends-chart-container">
+        <div class="trends-empty" id="trends-empty" hidden>No Historical Data</div>
         <canvas id="chart-fatigue"></canvas>
       </div>
     </div>

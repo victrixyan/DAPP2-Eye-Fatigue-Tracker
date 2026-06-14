@@ -332,6 +332,64 @@ function setTrend(view, btn) {
   renderFatigueChart(chartData.labels, chartData.values, true);
 }
 
+const FAQ_CONTENT = {
+  cvs: {
+    title: "What is Computer Vision Syndrome?",
+    answer:
+      "Computer Vision Syndrome (CVS) is a group of eye and vision problems caused by prolonged screen use. Common symptoms include eye strain, dryness, blurred vision, headaches, and neck or shoulder discomfort.",
+  },
+  "eye-health": {
+    title: "How to improve eye health?",
+    answer:
+      "Follow the 20-20-20 rule: every 20 minutes, look at something 20 feet away for 20 seconds. Blink regularly, keep screens at arm's length, adjust brightness to match your surroundings, and take breaks from continuous screen time.",
+  },
+};
+
+function closeFaqModal() {
+  const overlay = document.getElementById("faq-overlay");
+  if (overlay) overlay.hidden = true;
+}
+
+function openFaqModal(key) {
+  const content = FAQ_CONTENT[key];
+  const overlay = document.getElementById("faq-overlay");
+  const titleEl = document.getElementById("faq-modal-title");
+  const answerEl = document.getElementById("faq-modal-answer");
+  if (!content || !overlay || !titleEl || !answerEl) return;
+
+  titleEl.textContent = content.title;
+  answerEl.textContent = content.answer;
+  overlay.hidden = false;
+}
+
+function initInfoCards() {
+  const overlay = document.getElementById("faq-overlay");
+  const modal = document.getElementById("faq-modal");
+  if (!overlay) return;
+
+  document.querySelectorAll(".info-card[data-faq]").forEach((card) => {
+    const show = () => openFaqModal(card.dataset.faq);
+
+    card.addEventListener("click", (event) => {
+      event.stopPropagation();
+      show();
+    });
+
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        show();
+      }
+    });
+  });
+
+  overlay.addEventListener("click", closeFaqModal);
+
+  if (modal) {
+    modal.addEventListener("click", (event) => event.stopPropagation());
+  }
+}
+
 async function initDashboard() {
   const username = requireAuth();
   if (!username) return;
@@ -378,6 +436,8 @@ async function initDashboard() {
   } else {
     setTrend("day", document.querySelector("#trend-toggle button.active"));
   }
+
+  initInfoCards();
 }
 
 // ── Camera adjust (pre-calibration) ──

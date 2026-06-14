@@ -1,10 +1,3 @@
-# /// script
-# requires-python = ">=3.11"
-# dependencies = [
-#     "fastapi>=0.115",
-#     "uvicorn[standard]>=0.32",
-# ]
-# ///
 """FastAPI entrypoint — serves the UI and manages the session lifecycle."""
 
 from __future__ import annotations
@@ -33,7 +26,7 @@ if str(SRC_ROOT) not in sys.path:
 
 from core.gc0308 import CALIBRATION_COLUMNS, camera_worker_main  # noqa: E402
 from core.pipeline import ml_worker_main, train_session_model  # noqa: E402
-from server.socket import handle_session_ws, session_hub  # noqa: E402
+from server.web_socket import handle_session_ws, session_hub  # noqa: E402
 
 # spawn avoids fork + OpenCV issues on the Pi
 MP_CTX = multiprocessing.get_context("spawn")

@@ -1,11 +1,3 @@
-# /// script
-# requires-python = ">=3.11"
-# dependencies = [
-#     "numpy>=1.26",
-#     "scikit-learn>=1.4",
-#     "joblib>=1.3",
-# ]
-# ///
 """Feature engineering, IsolationForest training, and per-second fatigue scoring."""
 
 from __future__ import annotations

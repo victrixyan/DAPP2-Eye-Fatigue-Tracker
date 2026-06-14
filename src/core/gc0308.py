@@ -1,10 +1,3 @@
-# /// script
-# requires-python = ">=3.11"
-# dependencies = [
-#     "numpy>=1.26",
-#     "opencv-python-headless>=4.8",
-# ]
-# ///
 """USB camera capture and per-second pupil / blink metrics for the ML pipeline."""
 
 from __future__ import annotations

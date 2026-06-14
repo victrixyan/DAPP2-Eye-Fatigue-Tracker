@@ -65,7 +65,7 @@ def run(camera_index: int = 0) -> None:
 
             if state != last_state:
                 if last_state is not None:
-                    sys.stdout.write(f"\n  [{elapsed:>4d}s] {last_state} -> {state}\n")
+                    sys.stdout.write(f"\r[{elapsed:>4d}s] {last_state} -> {state}\r")
                     sys.stdout.flush()
                 last_state = state
 

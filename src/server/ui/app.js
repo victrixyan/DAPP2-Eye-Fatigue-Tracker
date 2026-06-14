@@ -597,17 +597,45 @@ async function initLoading() {
 
 // ── Live session ──
 
-let sessionChart     = null;
-let sessionWs        = null;
-let timerSeconds     = 0;
-let sessionPaused    = false;
-let sessionLabels    = ["0"];
-let sessionValues    = [0];
-let wsKeepalive      = null;
+let sessionChart          = null;
+let sessionWs             = null;
+let timerSeconds          = 0;
+let sessionPaused         = false;
+let sessionLabels         = ["0"];
+let sessionValues         = [0];
+let wsKeepalive           = null;
+let sessionTimerInterval  = null;
+let telemetryPollInterval = null;
+let sessionActive         = false;
+
+function parseElapsed(elapsed) {
+  const parts = elapsed.split(":").map(Number);
+  return parts[0] * 3600 + parts[1] * 60 + parts[2];
+}
 
 function updateSessionTimerDisplay() {
   const el = document.getElementById("session-timer");
   if (el) el.textContent = formatTime(timerSeconds);
+}
+
+function startSessionClock() {
+  if (sessionTimerInterval) return;
+  sessionTimerInterval = setInterval(() => {
+    if (!sessionPaused) {
+      timerSeconds += 1;
+      updateSessionTimerDisplay();
+    }
+  }, 1000);
+}
+
+function stopSessionClock() {
+  if (sessionTimerInterval) clearInterval(sessionTimerInterval);
+  sessionTimerInterval = null;
+}
+
+function stopTelemetryPolling() {
+  if (telemetryPollInterval) clearInterval(telemetryPollInterval);
+  telemetryPollInterval = null;
 }
 
 function initSessionChart() {
@@ -676,24 +704,48 @@ function updateSessionChart(elapsed, fatigue) {
 
 function applyTelemetry(msg) {
   if (sessionPaused) return;
+  if (msg.fatigue == null || msg.blink_rate == null) return;
 
   const fatigueEl = document.getElementById("current-fatigue");
   const blinksEl  = document.getElementById("current-blinks");
-  if (fatigueEl) fatigueEl.textContent = `${msg.fatigue.toFixed(1)}/10`;
+  if (fatigueEl) fatigueEl.textContent = `${Number(msg.fatigue).toFixed(1)}/10`;
   if (blinksEl) blinksEl.textContent = Math.round(msg.blink_rate);
 
   if (msg.elapsed) {
-    const parts = msg.elapsed.split(":").map(Number);
-    timerSeconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
+    timerSeconds = parseElapsed(msg.elapsed);
     updateSessionTimerDisplay();
   }
 
-  updateSessionChart(msg.elapsed || formatTime(timerSeconds), msg.fatigue);
+  updateSessionChart(msg.elapsed || formatTime(timerSeconds), Number(msg.fatigue));
+}
+
+async function syncLiveTelemetry() {
+  try {
+    const data = await apiGet("/api/session/live-telemetry");
+    sessionPaused = data.paused;
+
+    const btn = document.getElementById("btn-pause");
+    if (btn) {
+      btn.textContent = sessionPaused ? "Continue" : "Pause";
+      btn.classList.toggle("continue", sessionPaused);
+    }
+
+    applyTelemetry({
+      type: "telemetry",
+      fatigue: data.fatigue,
+      blink_rate: data.blink_rate,
+      elapsed: data.elapsed,
+    });
+  } catch (err) {
+    console.error(err);
+  }
 }
 
 function connectSessionWebSocket() {
   const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
   sessionWs = new WebSocket(`${wsProtocol}//${location.host}/ws/session`);
+
+  sessionWs.onopen = () => syncLiveTelemetry();
 
   sessionWs.onmessage = (event) => {
     try {
@@ -704,6 +756,12 @@ function connectSessionWebSocket() {
     }
   };
 
+  sessionWs.onclose = () => {
+    if (!sessionActive) return;
+    setTimeout(connectSessionWebSocket, 2000);
+  };
+
+  if (wsKeepalive) clearInterval(wsKeepalive);
   wsKeepalive = setInterval(() => {
     if (sessionWs && sessionWs.readyState === WebSocket.OPEN) {
       sessionWs.send("ping");
@@ -735,6 +793,9 @@ async function handlePause() {
 }
 
 async function handleEndSession() {
+  sessionActive = false;
+  stopSessionClock();
+  stopTelemetryPolling();
   if (wsKeepalive) clearInterval(wsKeepalive);
   if (sessionWs) sessionWs.close();
 
@@ -753,20 +814,36 @@ async function initSession() {
 
   document.getElementById("profile-username").textContent = username;
 
+  let status;
   try {
-    const status = await apiGet("/api/session/status");
-    if (status.phase === "training") {
-      await apiPost("/api/session/start-live");
-    } else if (status.phase !== "live") {
-      window.location.href = "dashboard.html";
-      return;
-    }
+    status = await apiGet("/api/session/status");
   } catch (err) {
     console.error(err);
+    return;
+  }
+
+  if (status.phase === "training") {
+    window.location.href = "loading.html";
+    return;
+  }
+  if (status.phase !== "live") {
+    window.location.href = "dashboard.html";
+    return;
+  }
+
+  sessionPaused = status.paused;
+  const btn = document.getElementById("btn-pause");
+  if (btn) {
+    btn.textContent = sessionPaused ? "Continue" : "Pause";
+    btn.classList.toggle("continue", sessionPaused);
   }
 
   initSessionChart();
+  sessionActive = true;
+  await syncLiveTelemetry();
+  startSessionClock();
   connectSessionWebSocket();
+  telemetryPollInterval = setInterval(syncLiveTelemetry, 1000);
 }
 
 // ── Page bootstrap ──

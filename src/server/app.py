@@ -9,6 +9,7 @@ import re
 import shutil
 import sys
 import threading
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -136,6 +137,14 @@ class HistoryResponse(BaseModel):
 
 class BlinkStateResponse(BaseModel):
     state: str
+
+
+class LiveTelemetryResponse(BaseModel):
+    phase: SessionPhase
+    fatigue: float
+    blink_rate: float
+    elapsed: str
+    paused: bool
 
 
 # --- filesystem helpers ---
@@ -382,6 +391,20 @@ def _format_elapsed(started_at: datetime) -> str:
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
 
+def build_live_telemetry_payload() -> dict[str, Any] | None:
+    """Build the latest live-session telemetry snapshot for HTTP/WS clients."""
+    with runtime._lock:
+        if runtime.phase != SessionPhase.LIVE:
+            return None
+        started_at = runtime.session_started_at
+        return {
+            "type": "telemetry",
+            "fatigue": float(runtime.latest_fatigue),
+            "blink_rate": float(runtime.latest_blink_rate),
+            "elapsed": _format_elapsed(started_at) if started_at else "00:00:00",
+        }
+
+
 def _telemetry_relay(result_queue: Any, relay_stop: threading.Event) -> None:
     """Read ML results and push them to WebSocket clients."""
     while not relay_stop.is_set():
@@ -400,6 +423,8 @@ def _telemetry_relay(result_queue: Any, relay_stop: threading.Event) -> None:
         if started_at is not None:
             message["elapsed"] = _format_elapsed(started_at)
 
+        message["fatigue"] = float(message["fatigue"])
+        message["blink_rate"] = float(message["blink_rate"])
         session_hub.publish(message)
 
 
@@ -525,18 +550,18 @@ def calibration_row_count() -> int:
 # --- FastAPI app ---
 
 
-app = FastAPI(title="Eye Fatigue Tracker", version="0.1.0")
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    import asyncio
 
-
-@app.on_event("startup")
-def on_startup() -> None:
+    session_hub.bind_loop(asyncio.get_running_loop())
     ensure_storage_dirs()
-
-
-@app.on_event("shutdown")
-def on_shutdown() -> None:
+    yield
     stop_live_workers()
     stop_camera_worker()
+
+
+app = FastAPI(title="Eye Fatigue Tracker", version="0.1.0", lifespan=lifespan)
 
 
 @app.get("/api/health")
@@ -730,6 +755,25 @@ def start_live() -> dict[str, str]:
 
     start_live_workers(uid, model_path)
     return {"phase": SessionPhase.LIVE.value}
+
+
+@app.get("/api/session/live-telemetry", response_model=LiveTelemetryResponse)
+def live_telemetry() -> LiveTelemetryResponse:
+    """Return the latest live metrics for session UI polling and reconnects."""
+    with runtime._lock:
+        if runtime.phase != SessionPhase.LIVE:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Cannot read telemetry while phase is '{runtime.phase.value}'.",
+            )
+        started_at = runtime.session_started_at
+        return LiveTelemetryResponse(
+            phase=runtime.phase,
+            fatigue=float(runtime.latest_fatigue),
+            blink_rate=float(runtime.latest_blink_rate),
+            elapsed=_format_elapsed(started_at) if started_at else "00:00:00",
+            paused=runtime.paused,
+        )
 
 
 @app.post("/api/session/pause")

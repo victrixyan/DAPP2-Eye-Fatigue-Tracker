@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -32,7 +33,11 @@ class SessionHub:
         """Thread-safe entry point used by the telemetry relay thread."""
         if self._loop is None or not self._clients:
             return
-        message = json.dumps(payload)
+        try:
+            message = json.dumps(payload)
+        except (TypeError, ValueError) as exc:
+            print(f"[session_hub] publish failed: {exc}", file=sys.stderr)
+            return
         asyncio.run_coroutine_threadsafe(self._broadcast(message), self._loop)
 
     async def _broadcast(self, message: str) -> None:
@@ -55,10 +60,17 @@ session_hub = SessionHub()
 
 async def handle_session_ws(websocket: WebSocket) -> None:
     """Hold one browser connection open for the live session page."""
-    loop = asyncio.get_running_loop()
-    session_hub.bind_loop(loop)
-
     await session_hub.register(websocket)
+
+    from server.app import build_live_telemetry_payload
+
+    snapshot = build_live_telemetry_payload()
+    if snapshot is not None:
+        try:
+            await websocket.send_text(json.dumps(snapshot))
+        except Exception:
+            pass
+
     try:
         while True:
             # Keep the socket alive; pause/resume uses HTTP routes.

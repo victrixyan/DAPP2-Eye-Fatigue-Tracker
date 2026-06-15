@@ -182,13 +182,11 @@ class SessionModel:
     score_hi: float
     blink_tracker: BlinkRateTracker
 
-    def predict(self, ibi: float, pupil_area: float) -> tuple[float, float]:
-        """Return fatigue score (0-10) and blink rate (per minute)."""
+    def predict(self, ibi: float, pupil_area: float) -> float:
+        """Return fatigue score (0-10)."""
         features = self.engineer.transform_step(ibi, pupil_area).reshape(1, -1)
         raw = float(self.forest.score_samples(features)[0])
-        fatigue = score_to_fatigue(raw, self.score_lo, self.score_hi)
-        blink_rate = self.blink_tracker.update(ibi)
-        return fatigue, blink_rate
+        return score_to_fatigue(raw, self.score_lo, self.score_hi)
 
 
 def score_to_fatigue(raw_score: float, score_lo: float, score_hi: float) -> float:
@@ -297,12 +295,11 @@ def ml_worker_main(
         except queue.Empty:
             continue
 
-        fatigue, blink_rate = model.predict(row["ibi"], row["pupil_area"])
+        fatigue = model.predict(row["ibi"], row["pupil_area"])
         result_queue.put(
             {
                 "type": "telemetry",
                 "second": int(row["second"]),
                 "fatigue": fatigue,
-                "blink_rate": blink_rate,
             }
         )

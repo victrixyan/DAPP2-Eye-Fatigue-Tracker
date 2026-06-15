@@ -431,12 +431,9 @@ async function initDashboard() {
     document.getElementById("last-recording").textContent = last.date;
     document.getElementById("latest-fatigue").textContent =
       formatFatigueScore(last.latest_fatigue_score);
-    document.getElementById("latest-blinks").textContent =
-      Math.round(last.latest_blinking_rate);
   } else {
     document.getElementById("last-recording").textContent = "No recordings yet";
     document.getElementById("latest-fatigue").textContent = "-";
-    document.getElementById("latest-blinks").textContent = "-";
   }
 
   renderCalendar(dashboardHistory.sessions);
@@ -714,12 +711,10 @@ function updateSessionChart(elapsed, fatigue) {
 
 function applyTelemetry(msg) {
   if (sessionPaused) return;
-  if (msg.fatigue == null || msg.blink_rate == null) return;
+  if (msg.fatigue == null) return;
 
   const fatigueEl = document.getElementById("current-fatigue");
-  const blinksEl  = document.getElementById("current-blinks");
   if (fatigueEl) fatigueEl.textContent = formatFatigueScore(msg.fatigue);
-  if (blinksEl) blinksEl.textContent = Math.round(msg.blink_rate);
 
   if (msg.elapsed) {
     timerSeconds = parseElapsed(msg.elapsed);
@@ -743,7 +738,6 @@ async function syncLiveTelemetry() {
     applyTelemetry({
       type: "telemetry",
       fatigue: data.fatigue,
-      blink_rate: data.blink_rate,
       elapsed: data.elapsed,
     });
   } catch (err) {

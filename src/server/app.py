@@ -98,7 +98,6 @@ class RuntimeSession:
     camera_worker: CameraWorkerHandle | None = None
     live_workers: LiveWorkers | None = None
     latest_fatigue: float = 0.0
-    latest_blink_rate: float = 0.0
     last_valid_fatigue: float | None = None
     training_error: str | None = None
     blink_state: str = "OPEN"
@@ -144,7 +143,6 @@ class BlinkStateResponse(BaseModel):
 class LiveTelemetryResponse(BaseModel):
     phase: SessionPhase
     fatigue: float
-    blink_rate: float
     elapsed: str
     paused: bool
 
@@ -409,7 +407,6 @@ def build_live_telemetry_payload() -> dict[str, Any] | None:
         return {
             "type": "telemetry",
             "fatigue": float(runtime.latest_fatigue),
-            "blink_rate": float(runtime.latest_blink_rate),
             "elapsed": _format_elapsed(started_at) if started_at else "00:00:00",
         }
 
@@ -430,18 +427,15 @@ def _telemetry_relay(result_queue: Any, relay_stop: threading.Event) -> None:
                 continue
 
             candidate = float(message["fatigue"])
-            blink_rate = float(message["blink_rate"])
             started_at = runtime.session_started_at
 
             if _fatigue_jump_accepted(candidate, runtime.last_valid_fatigue):
                 runtime.last_valid_fatigue = candidate
                 runtime.latest_fatigue = candidate
-                runtime.latest_blink_rate = blink_rate
                 outbound = {
                     "type": "telemetry",
                     "second": int(message.get("second", 0)),
                     "fatigue": candidate,
-                    "blink_rate": blink_rate,
                 }
                 publish = True
 
@@ -676,7 +670,6 @@ def start_calibration(body: UidRequest) -> dict[str, Any]:
         runtime.session_started_at = None
         runtime.paused = False
         runtime.latest_fatigue = 0.0
-        runtime.latest_blink_rate = 0.0
         runtime.phase = SessionPhase.CALIBRATING
         calibration_csv = runtime.calibration_csv
 
@@ -776,7 +769,6 @@ def start_live() -> dict[str, str]:
         runtime.session_started_at = datetime.now()
         runtime.paused = False
         runtime.latest_fatigue = 0.0
-        runtime.latest_blink_rate = 0.0
         runtime.last_valid_fatigue = None
         runtime.phase = SessionPhase.LIVE
 
@@ -797,7 +789,6 @@ def live_telemetry() -> LiveTelemetryResponse:
         return LiveTelemetryResponse(
             phase=runtime.phase,
             fatigue=float(runtime.latest_fatigue),
-            blink_rate=float(runtime.latest_blink_rate),
             elapsed=_format_elapsed(started_at) if started_at else "00:00:00",
             paused=runtime.paused,
         )
@@ -846,7 +837,7 @@ def end_session() -> dict[str, Any]:
             start_time=runtime.session_started_at.strftime("%H:%M:%S"),
             duration=duration,
             latest_fatigue_score=runtime.latest_fatigue,
-            latest_blinking_rate=runtime.latest_blink_rate,
+            latest_blinking_rate=0.0,
         )
 
     stop_live_workers()

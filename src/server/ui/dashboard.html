@@ -150,12 +150,11 @@
     .metrics-panel {
       background: var(--lavender-soft);
       border-radius: 40px;
-      padding: 36px 32px;
+      padding: 32px;
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      gap: 32px;
+      justify-content: flex-start;
       align-self: stretch;
       min-height: 200px;
     }
@@ -165,41 +164,35 @@
       font-weight: 700;
       color: var(--purple-dark);
       text-align: center;
-      margin: 0;
+      margin: 0 0 24px;
       width: 100%;
     }
 
-    .metrics-panel .metrics-list {
+    .metrics-panel .metrics-body {
+      flex: 1;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 14px;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
     }
 
-    .metrics-panel .metric-row {
-      display: grid;
-      grid-template-columns: max-content max-content;
-      column-gap: 20px;
-      align-items: baseline;
-    }
-
-    .metrics-panel .metric-row .metric-value {
-      font-size: 34px;
+    .metrics-panel .metric-value {
+      font-size: 42px;
       font-weight: 700;
       color: var(--purple-dark);
-      text-align: right;
+      text-align: center;
       line-height: 1.1;
       padding: 0;
-      min-width: 1.5ch;
     }
 
-    .metrics-panel .metric-row .metric-label {
+    .metrics-panel .metric-label {
       font-size: 14px;
       font-weight: 400;
       color: var(--purple-dark);
-      text-align: left;
+      text-align: center;
       line-height: 1.3;
-      align-self: center;
     }
 
     /* Info Cards */
@@ -408,15 +401,9 @@
     <!-- Latest Card -->
     <div class="latest-card metrics-panel">
       <h2>Latest</h2>
-      <div class="metrics-list">
-        <div class="metric-row">
-          <span class="metric-value" id="latest-fatigue">-</span>
-          <span class="metric-label">fatigue score</span>
-        </div>
-        <div class="metric-row">
-          <span class="metric-value" id="latest-blinks">-</span>
-          <span class="metric-label">blinks per minute</span>
-        </div>
+      <div class="metrics-body">
+        <span class="metric-value" id="latest-fatigue">-</span>
+        <span class="metric-label">fatigue score</span>
       </div>
     </div>
 

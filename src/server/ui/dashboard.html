@@ -142,44 +142,8 @@
 
     /* Latest Card */
     .latest-card {
-      background: var(--lavender-soft);
-      border-radius: var(--radius-lg);
-      padding: 24px;
       grid-column: 2;
       grid-row: 1;
-    }
-
-    .latest-card h2 {
-      font-size: 18px;
-      font-weight: 600;
-      color: var(--purple-dark);
-      margin-bottom: 20px;
-      text-align: center;
-    }
-
-    .metrics-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-      text-align: center;
-    }
-
-    .metric {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .metric-number {
-      font-size: 32px;
-      font-weight: 700;
-      color: var(--purple-dark);
-    }
-
-    .metric-label {
-      font-size: 13px;
-      color: var(--text-mid);
-      font-weight: 500;
     }
 
     /* Info Cards */
@@ -256,6 +220,8 @@
       color: var(--text-mid);
       line-height: 1.6;
       margin: 0;
+      text-align: left;
+      white-space: pre-line;
     }
 
     /* Historical Trends */
@@ -384,16 +350,16 @@
     </div>
 
     <!-- Latest Card -->
-    <div class="latest-card">
+    <div class="latest-card metrics-panel">
       <h2>Latest</h2>
-      <div class="metrics-row">
-        <div class="metric">
-          <div class="metric-number" id="latest-fatigue">-</div>
-          <div class="metric-label">fatigue score</div>
+      <div class="metrics-list">
+        <div class="metric-row">
+          <span class="metric-value" id="latest-fatigue">-</span>
+          <span class="metric-label">fatigue score</span>
         </div>
-        <div class="metric">
-          <div class="metric-number" id="latest-blinks">-</div>
-          <div class="metric-label">blinks per minute</div>
+        <div class="metric-row">
+          <span class="metric-value" id="latest-blinks">-</span>
+          <span class="metric-label">blinks per minute</span>
         </div>
       </div>
     </div>

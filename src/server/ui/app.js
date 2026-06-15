@@ -164,6 +164,12 @@ function anchorZeroPoint(labels, values) {
   };
 }
 
+function formatFatigueScore(score) {
+  if (score == null || score === "-" || Number.isNaN(Number(score))) return "-";
+  const n = Number(score);
+  return n % 1 === 0 ? String(n) : n.toFixed(1);
+}
+
 function buildDayView(sessions) {
   const today = formatDate(new Date());
   const rows  = sessions.filter((s) => s.date === today);
@@ -341,7 +347,11 @@ const FAQ_CONTENT = {
   "eye-health": {
     title: "How to improve eye health?",
     answer:
-      "Follow the 20-20-20 rule: every 20 minutes, look at something 20 feet away for 20 seconds. Blink regularly, keep screens at arm's length, adjust brightness to match your surroundings, and take breaks from continuous screen time.",
+      "😌 Continue taking regular breaks\n" +
+      "👀 Blink consciously and completely\n" +
+      "📏 Follow the 20-20-20 rule: Every 20 minutes\n" +
+      "👀 Look at something 20 feet away for 20 seconds\n" +
+      "💻 Position screen 20-26 inches from eyes",
   },
 };
 
@@ -420,7 +430,7 @@ async function initDashboard() {
   if (last) {
     document.getElementById("last-recording").textContent = last.date;
     document.getElementById("latest-fatigue").textContent =
-      `${last.latest_fatigue_score.toFixed(1)}/10`;
+      formatFatigueScore(last.latest_fatigue_score);
     document.getElementById("latest-blinks").textContent =
       Math.round(last.latest_blinking_rate);
   } else {
@@ -708,7 +718,7 @@ function applyTelemetry(msg) {
 
   const fatigueEl = document.getElementById("current-fatigue");
   const blinksEl  = document.getElementById("current-blinks");
-  if (fatigueEl) fatigueEl.textContent = `${Number(msg.fatigue).toFixed(1)}/10`;
+  if (fatigueEl) fatigueEl.textContent = formatFatigueScore(msg.fatigue);
   if (blinksEl) blinksEl.textContent = Math.round(msg.blink_rate);
 
   if (msg.elapsed) {
@@ -844,6 +854,7 @@ async function initSession() {
   startSessionClock();
   connectSessionWebSocket();
   telemetryPollInterval = setInterval(syncLiveTelemetry, 1000);
+  initInfoCards();
 }
 
 // ── Page bootstrap ──

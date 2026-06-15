@@ -219,13 +219,14 @@ body {
 .metrics-panel {
   background: var(--lavender-soft);
   border-radius: 40px;
-  padding: 32px 36px;
+  padding: 36px 32px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 28px;
+  gap: 32px;
   align-self: stretch;
+  min-height: 200px;
 }
 
 .metrics-panel h2 {
@@ -234,20 +235,20 @@ body {
   color: var(--purple-dark);
   text-align: center;
   margin: 0;
+  width: 100%;
 }
 
 .metrics-panel .metrics-list {
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 14px;
-  width: 100%;
-  max-width: 300px;
 }
 
 .metrics-panel .metric-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  column-gap: 16px;
+  grid-template-columns: max-content max-content;
+  column-gap: 20px;
   align-items: baseline;
 }
 
@@ -258,6 +259,7 @@ body {
   text-align: right;
   line-height: 1.1;
   padding: 0;
+  min-width: 1.5ch;
 }
 
 .metrics-panel .metric-row .metric-label {

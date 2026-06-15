@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Eye Fatigue Tracker — Session</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=2" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     .session-container {
@@ -122,6 +122,62 @@
     .current-card {
       grid-column: 2;
       grid-row: 1;
+    }
+
+    /* Latest / Current metrics panel (inline so Pi always gets card styling) */
+    .metrics-panel {
+      background: var(--lavender-soft);
+      border-radius: 40px;
+      padding: 36px 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 32px;
+      align-self: stretch;
+      min-height: 200px;
+    }
+
+    .metrics-panel h2 {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--purple-dark);
+      text-align: center;
+      margin: 0;
+      width: 100%;
+    }
+
+    .metrics-panel .metrics-list {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .metrics-panel .metric-row {
+      display: grid;
+      grid-template-columns: max-content max-content;
+      column-gap: 20px;
+      align-items: baseline;
+    }
+
+    .metrics-panel .metric-row .metric-value {
+      font-size: 34px;
+      font-weight: 700;
+      color: var(--purple-dark);
+      text-align: right;
+      line-height: 1.1;
+      padding: 0;
+      min-width: 1.5ch;
+    }
+
+    .metrics-panel .metric-row .metric-label {
+      font-size: 14px;
+      font-weight: 400;
+      color: var(--purple-dark);
+      text-align: left;
+      line-height: 1.3;
+      align-self: center;
     }
 
     .info-card {

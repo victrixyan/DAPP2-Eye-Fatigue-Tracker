@@ -18,3 +18,13 @@ __pycache__/
 
 # Mac
 .DS_Store
+
+# IDE
+.vscode/
+.cursor/
+
+# Transient session files (history/ is kept)
+src/core/data/*
+!src/core/data/.gitkeep
+src/core/model/*
+!src/core/model/.gitkeep

@@ -1,4 +1,29 @@
-// ── User store — persists in localStorage across page loads ──
+// ── API client ──
+
+async function apiGet(path) {
+  const response = await fetch(path);
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({}));
+    throw new Error(detail.detail || response.statusText);
+  }
+  return response.json();
+}
+
+async function apiPost(path, body) {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: body ? { "Content-Type": "application/json" } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({}));
+    throw new Error(detail.detail || response.statusText);
+  }
+  return response.json();
+}
+
+// ── User store (local auth only) ──
+
 function getUsers() {
   return JSON.parse(localStorage.getItem("eft_users") || "{}");
 }
@@ -7,7 +32,6 @@ function saveUsers(users) {
   localStorage.setItem("eft_users", JSON.stringify(users));
 }
 
-// ── Auth helpers ──
 function saveSession(username) {
   localStorage.setItem("eft_user", username);
 }
@@ -20,7 +44,17 @@ function clearSession() {
   localStorage.removeItem("eft_user");
 }
 
-// ── Register ──
+function requireAuth() {
+  const username = getSession();
+  if (!username) {
+    window.location.href = "index.html";
+    return null;
+  }
+  return username;
+}
+
+// ── Auth ──
+
 function handleRegister() {
   const name          = document.getElementById("reg-name")?.value.trim();
   const lastname      = document.getElementById("reg-lastname")?.value.trim();
@@ -46,21 +80,12 @@ function handleRegister() {
     return;
   }
 
-  users[username] = {
-    name,
-    lastname,
-    password,
-    firstRecording: formatDate(new Date()),
-    lastRecording: null,
-    calibrated: false,
-  };
-
+  users[username] = { name, lastname, password };
   saveUsers(users);
   saveSession(username);
-  window.location.href = "calibration.html";
+  window.location.href = "dashboard.html";
 }
 
-// ── Login ──
 function handleLogin() {
   const username = document.getElementById("username")?.value.trim().toLowerCase();
   const password = document.getElementById("password")?.value;
@@ -72,7 +97,6 @@ function handleLogin() {
   }
 
   const users = getUsers();
-
   if (!users[username] || users[username].password !== password) {
     showError(errorEl, "Incorrect username or password.");
     return;
@@ -82,177 +106,438 @@ function handleLogin() {
   window.location.href = "dashboard.html";
 }
 
-// ── Dashboard init ──
-function initDashboard() {
-  const username = getSession();
-  if (!username) {
-    window.location.href = "index.html";
-    return;
-  }
-
-  const users = getUsers();
-  const user  = users[username];
-
-  if (!user) {
-    window.location.href = "index.html";
-    return;
-  }
-
-  document.getElementById("profile-name").textContent =
-    `${user.name} ${user.lastname}`;
-  document.getElementById("profile-username").textContent = username;
-  document.getElementById("first-recording").textContent =
-    user.firstRecording;
-  document.getElementById("last-recording").textContent =
-    user.lastRecording || "No recordings yet";
-  document.getElementById("session-date").textContent =
-    formatDate(new Date());
-
-  initCharts("week");
-}
-
-// ── Session timer ──
-let timerInterval = null;
-let timerSeconds  = 0;
-let isPaused      = false;
-
-function startSession() {
-  if (timerInterval) return;
-  isPaused = false;
-  timerInterval = setInterval(() => {
-    timerSeconds++;
-    document.getElementById("session-timer").textContent =
-      formatTime(timerSeconds);
-  }, 1000);
-}
-
-function pauseSession() {
-  if (isPaused) {
-    timerInterval = setInterval(() => {
-      timerSeconds++;
-      document.getElementById("session-timer").textContent =
-        formatTime(timerSeconds);
-    }, 1000);
-    isPaused = false;
-    document.querySelector(".btn-pause").textContent = "Pause";
-  } else {
-    clearInterval(timerInterval);
-    timerInterval = null;
-    isPaused = true;
-    document.querySelector(".btn-pause").textContent = "Resume";
-  }
-}
-
-function endSession() {
-  clearInterval(timerInterval);
-  timerInterval = null;
-  timerSeconds  = 0;
-  isPaused      = false;
-  document.getElementById("session-timer").textContent = "00:00:00";
-  document.querySelector(".btn-pause").textContent = "Pause";
-
-  const username = getSession();
-  const users    = getUsers();
-  if (username && users[username]) {
-    users[username].lastRecording = formatDate(new Date());
-    saveUsers(users);
-    document.getElementById("last-recording").textContent =
-      users[username].lastRecording;
-  }
-}
-
-// ── Charts ──
-let blinkChart   = null;
-let fatigueChart = null;
-
-const chartData = {
-  week: {
-    labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-    blink:   [3.2, 3.8, 2.9, 4.1, 3.5, 2.7, 3.9],
-    fatigue: [4.1, 6.2, 3.8, 7.6, 5.3, 3.1, 4.8],
-  },
-  day: {
-    labels: ["9am", "10am", "11am", "12pm", "1pm", "2pm", "3pm"],
-    blink:   [3.1, 3.4, 3.9, 4.2, 3.7, 4.5, 3.8],
-    fatigue: [2.1, 3.5, 5.2, 6.8, 4.3, 7.1, 5.9],
-  },
-  session: {
-    labels: ["0m", "5m", "10m", "15m", "20m", "25m", "30m"],
-    blink:   [3.0, 3.2, 3.5, 3.8, 4.1, 4.4, 4.6],
-    fatigue: [1.0, 2.5, 3.8, 5.0, 6.2, 7.0, 7.6],
-  },
-};
-
-function initCharts(view) {
-  const d = chartData[view];
-
-  const commonOptions = {
-    responsive: true,
-    plugins: { legend: { display: false } },
-    scales: {
-      x: {
-        grid: { display: false },
-        ticks: { font: { size: 11 }, color: "#7B6BA8" },
-      },
-      y: {
-        grid: { color: "rgba(196,181,224,0.3)" },
-        ticks: { font: { size: 11 }, color: "#7B6BA8" },
-      },
-    },
-  };
-
-  if (blinkChart)   blinkChart.destroy();
-  if (fatigueChart) fatigueChart.destroy();
-
-  blinkChart = new Chart(document.getElementById("chart-blink"), {
-    type: "bar",
-    data: {
-      labels: d.labels,
-      datasets: [{
-        data: d.blink,
-        backgroundColor: "#4A3080",
-        borderRadius: 4,
-      }],
-    },
-    options: commonOptions,
-  });
-
-  fatigueChart = new Chart(document.getElementById("chart-fatigue"), {
-    type: "bar",
-    data: {
-      labels: d.labels,
-      datasets: [{
-        data: d.fatigue,
-        backgroundColor: "#4A3080",
-        borderRadius: 4,
-      }],
-    },
-    options: commonOptions,
-  });
-}
-
-// ── Trend toggle ──
-function setTrend(view, btn) {
-  document.querySelectorAll("#trend-toggle button").forEach(b =>
-    b.classList.remove("active")
-  );
-  btn.classList.add("active");
-  initCharts(view);
-}
-
-// ── Sign out ──
 function signOut() {
   clearSession();
   window.location.href = "index.html";
 }
 
-// ── Calibration ──
-function initCalibration() {
-  const username = getSession();
-  if (!username) {
+function handleNewSession() {
+  window.location.href = "adjust_device.html";
+}
+
+// ── Utilities ──
+
+function formatTime(seconds) {
+  const h = String(Math.floor(seconds / 3600)).padStart(2, "0");
+  const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, "0");
+  const s = String(seconds % 60).padStart(2, "0");
+  return `${h}:${m}:${s}`;
+}
+
+function formatDate(date) {
+  return date.toLocaleDateString("en-GB", {
+    day: "2-digit", month: "2-digit", year: "numeric",
+  });
+}
+
+function parseUkDate(dateStr) {
+  const [day, month, year] = dateStr.split("/").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function showError(el, message) {
+  if (!el) return;
+  el.textContent = message;
+  el.classList.add("visible");
+}
+
+function sessionEndTimeLabel(startTime, duration) {
+  const [sh, sm, ss] = startTime.split(":").map(Number);
+  const [dh, dm, ds] = duration.split(":").map(Number);
+  let total = sh * 3600 + sm * 60 + ss + dh * 3600 + dm * 60 + ds;
+  const h = Math.floor(total / 3600) % 24;
+  total %= 3600;
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+// ── Dashboard charts ──
+
+let fatigueChart = null;
+let dashboardHistory = null;
+
+function anchorZeroPoint(labels, values) {
+  return {
+    labels: ["0", ...labels],
+    values: [0, ...values],
+  };
+}
+
+function formatFatigueScore(score) {
+  if (score == null || score === "-" || Number.isNaN(Number(score))) return "-";
+  const n = Number(score);
+  return n % 1 === 0 ? String(n) : n.toFixed(1);
+}
+
+function buildDayView(sessions) {
+  const today = formatDate(new Date());
+  const rows  = sessions.filter((s) => s.date === today);
+  const labels = rows.map((s) => sessionEndTimeLabel(s.start_time, s.duration));
+  const values = rows.map((s) => s.latest_fatigue_score);
+  return anchorZeroPoint(labels, values);
+}
+
+function mondayOfWeek(date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function buildWeekView(sessions) {
+  const labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const monday = mondayOfWeek(new Date());
+  const values = labels.map((_, i) => {
+    const dayDate = new Date(monday);
+    dayDate.setDate(monday.getDate() + i);
+    const dayStr = formatDate(dayDate);
+    const dayRows = sessions.filter((s) => s.date === dayStr);
+    if (!dayRows.length) return 0;
+    const avg = dayRows.reduce((a, s) => a + s.latest_fatigue_score, 0) / dayRows.length;
+    return +avg.toFixed(1);
+  });
+  return anchorZeroPoint(labels, values);
+}
+
+function buildMonthView(sessions) {
+  const now   = new Date();
+  const month = now.getMonth();
+  const year  = now.getFullYear();
+  const byDay = {};
+
+  sessions.forEach((s) => {
+    const d = parseUkDate(s.date);
+    if (d.getMonth() === month && d.getFullYear() === year) {
+      const key = d.getDate();
+      if (!byDay[key]) byDay[key] = { sum: 0, count: 0 };
+      byDay[key].sum += s.latest_fatigue_score;
+      byDay[key].count += 1;
+    }
+  });
+
+  const days = Object.keys(byDay).map(Number).sort((a, b) => a - b);
+  const labels = days.map((d) => String(d));
+  const values = days.map((d) => +(byDay[d].sum / byDay[d].count).toFixed(1));
+  return anchorZeroPoint(labels, values);
+}
+
+function renderCalendar(sessions) {
+  const grid = document.getElementById("calendar-grid");
+  if (!grid) return;
+
+  const now        = new Date();
+  const year       = now.getFullYear();
+  const month      = now.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const sessionDays = new Set(
+    sessions
+      .filter((s) => {
+        const d = parseUkDate(s.date);
+        return d.getMonth() === month && d.getFullYear() === year;
+      })
+      .map((s) => parseUkDate(s.date).getDate())
+  );
+
+  grid.innerHTML = "";
+  for (let day = 1; day <= daysInMonth; day++) {
+    const cell = document.createElement("div");
+    cell.className = "calendar-day";
+    if (sessionDays.has(day)) cell.classList.add("active");
+    cell.textContent = String(day);
+    grid.appendChild(cell);
+  }
+}
+
+function showTrendsEmpty(show) {
+  const empty = document.getElementById("trends-empty");
+  const canvas = document.getElementById("chart-fatigue");
+  const container = document.getElementById("trends-chart-container");
+  if (!empty || !canvas) return;
+
+  empty.hidden = !show;
+  if (container) container.classList.toggle("is-empty", show);
+
+  if (show && fatigueChart) {
+    fatigueChart.destroy();
+    fatigueChart = null;
+  }
+}
+
+function renderFatigueChart(labels, values, animate) {
+  const canvas = document.getElementById("chart-fatigue");
+  if (!canvas) return;
+
+  const hasData = values.length > 1;
+
+  if (fatigueChart) fatigueChart.destroy();
+
+  fatigueChart = new Chart(canvas, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{
+        label: "Fatigue Score",
+        data: values,
+        borderColor: "#3D2D7A",
+        backgroundColor: "transparent",
+        borderWidth: 3,
+        fill: false,
+        tension: 0.4,
+        pointRadius: hasData ? 6 : 0,
+        pointBackgroundColor: "#3D2D7A",
+        pointBorderColor: "#FFFFFF",
+        pointBorderWidth: 2,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: animate ? { duration: 1200, easing: "easeOutQuart" } : false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: {
+          display: hasData,
+          grid: { display: false },
+          ticks: { font: { size: 11 }, color: "#7B6BA8" },
+        },
+        y: {
+          display: hasData,
+          grid: { color: "rgba(196,181,224,0.4)" },
+          ticks: { font: { size: 11 }, color: "#7B6BA8" },
+          beginAtZero: true,
+          max: 10,
+        },
+      },
+    },
+  });
+}
+
+function setTrend(view, btn) {
+  if (!dashboardHistory) return;
+
+  if (!dashboardHistory.sessions.length) {
+    showTrendsEmpty(true);
+    return;
+  }
+
+  showTrendsEmpty(false);
+
+  document.querySelectorAll("#trend-toggle button").forEach((b) =>
+    b.classList.remove("active")
+  );
+  if (btn) btn.classList.add("active");
+
+  let chartData;
+  if (view === "week") chartData = buildWeekView(dashboardHistory.sessions);
+  else if (view === "month") chartData = buildMonthView(dashboardHistory.sessions);
+  else chartData = buildDayView(dashboardHistory.sessions);
+
+  renderFatigueChart(chartData.labels, chartData.values, true);
+}
+
+const FAQ_CONTENT = {
+  cvs: {
+    title: "What is Computer Vision Syndrome?",
+    answer:
+      "Computer Vision Syndrome (CVS) is a group of eye and vision problems caused by prolonged screen use. Common symptoms include eye strain, dryness, blurred vision, headaches, and neck or shoulder discomfort.",
+  },
+  "eye-health": {
+    title: "How to improve eye health?",
+    answer:
+      "😌 Continue taking regular breaks\n" +
+      "👀 Blink consciously and completely\n" +
+      "📏 Follow the 20-20-20 rule: Every 20 minutes\n" +
+      "👀 Look at something 20 feet away for 20 seconds\n" +
+      "💻 Position screen 20-26 inches from eyes",
+  },
+};
+
+function closeFaqModal() {
+  const overlay = document.getElementById("faq-overlay");
+  if (overlay) overlay.hidden = true;
+}
+
+function openFaqModal(key) {
+  const content = FAQ_CONTENT[key];
+  const overlay = document.getElementById("faq-overlay");
+  const titleEl = document.getElementById("faq-modal-title");
+  const answerEl = document.getElementById("faq-modal-answer");
+  if (!content || !overlay || !titleEl || !answerEl) return;
+
+  titleEl.textContent = content.title;
+  answerEl.textContent = content.answer;
+  overlay.hidden = false;
+}
+
+function initInfoCards() {
+  const overlay = document.getElementById("faq-overlay");
+  const modal = document.getElementById("faq-modal");
+  if (!overlay) return;
+
+  document.querySelectorAll(".info-card[data-faq]").forEach((card) => {
+    const show = () => openFaqModal(card.dataset.faq);
+
+    card.addEventListener("click", (event) => {
+      event.stopPropagation();
+      show();
+    });
+
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        show();
+      }
+    });
+  });
+
+  overlay.addEventListener("click", closeFaqModal);
+
+  if (modal) {
+    modal.addEventListener("click", (event) => event.stopPropagation());
+  }
+}
+
+async function initDashboard() {
+  const username = requireAuth();
+  if (!username) return;
+
+  const users = getUsers();
+  const user  = users[username];
+  if (!user) {
+    clearSession();
     window.location.href = "index.html";
     return;
   }
+
+  const nameEl = document.getElementById("profile-name");
+  if (nameEl) nameEl.textContent = `${user.name} ${user.lastname}`;
+
+  document.getElementById("profile-username").textContent = username;
+
+  try {
+    dashboardHistory = await apiGet(`/api/history/${encodeURIComponent(username)}`);
+  } catch {
+    dashboardHistory = { sessions: [], total_sessions: 0, last_session: null };
+  }
+
+  document.getElementById("total-sessions").textContent =
+    dashboardHistory.total_sessions;
+
+  const last = dashboardHistory.last_session;
+  if (last) {
+    document.getElementById("last-recording").textContent = last.date;
+    document.getElementById("latest-fatigue").textContent =
+      formatFatigueScore(last.latest_fatigue_score);
+  } else {
+    document.getElementById("last-recording").textContent = "No recordings yet";
+    document.getElementById("latest-fatigue").textContent = "-";
+  }
+
+  renderCalendar(dashboardHistory.sessions);
+
+  if (!dashboardHistory.sessions.length) {
+    showTrendsEmpty(true);
+  } else {
+    setTrend("day", document.querySelector("#trend-toggle button.active"));
+  }
+
+  initInfoCards();
+}
+
+// ── Camera adjust (pre-calibration) ──
+
+let blinkPollInterval = null;
+
+function updateBlinkDisplay(state) {
+  const el = document.getElementById("blink-state");
+  if (!el) return;
+  el.textContent = state;
+  el.classList.toggle("open", state === "OPEN");
+}
+
+async function handleAdjustNext() {
+  const btn = document.getElementById("btn-next");
+  if (btn) btn.disabled = true;
+
+  if (blinkPollInterval) {
+    clearInterval(blinkPollInterval);
+    blinkPollInterval = null;
+  }
+
+  try {
+    await apiPost("/api/session/stop-adjust");
+  } catch (err) {
+    console.error(err);
+  }
+
+  window.location.href = "calibration.html";
+}
+
+async function initAdjustDevice() {
+  const username = requireAuth();
+  if (!username) return;
+
+  const btn = document.getElementById("btn-next");
+  if (btn) btn.onclick = handleAdjustNext;
+
+  try {
+    await apiPost("/api/session/start-adjust", { uid: username });
+  } catch (err) {
+    updateBlinkDisplay("ERROR");
+    console.error(err);
+    return;
+  }
+
+  blinkPollInterval = setInterval(async () => {
+    try {
+      const data = await apiGet("/api/session/blink-state");
+      updateBlinkDisplay(data.state);
+    } catch (err) {
+      console.error(err);
+    }
+  }, 150);
+
+  window.addEventListener("beforeunload", () => {
+    fetch("/api/session/stop-adjust", { method: "POST", keepalive: true });
+  });
+}
+
+// ── Calibration ──
+
+let calibInterval = null;
+
+async function handleEndCalibration() {
+  if (calibInterval) clearInterval(calibInterval);
+  try {
+    await apiPost("/api/session/cancel-calibration");
+  } catch (err) {
+    console.error(err);
+  }
+  window.location.href = "dashboard.html";
+}
+
+async function finishCalibration() {
+  if (calibInterval) clearInterval(calibInterval);
+  const statusEl = document.getElementById("calib-status");
+  const doneEl   = document.getElementById("calib-complete");
+  if (statusEl) statusEl.textContent = "Complete";
+  if (doneEl) doneEl.style.display = "block";
+
+  try {
+    await apiPost("/api/session/end-calibration");
+    setTimeout(() => { window.location.href = "loading.html"; }, 1500);
+  } catch (err) {
+    if (statusEl) statusEl.textContent = "Error ending calibration";
+    console.error(err);
+  }
+}
+
+async function initCalibration() {
+  const username = requireAuth();
+  if (!username) return;
 
   const DURATION = 5 * 60;
   let remaining  = DURATION;
@@ -260,10 +545,17 @@ function initCalibration() {
   const timerEl  = document.getElementById("calib-timer");
   const barEl    = document.getElementById("calib-bar");
   const pctEl    = document.getElementById("calib-percent");
-  const statusEl = document.getElementById("calib-status");
-  const doneEl   = document.getElementById("calib-complete");
 
-  const interval = setInterval(() => {
+  try {
+    await apiPost("/api/session/start-calibration", { uid: username });
+  } catch (err) {
+    document.getElementById("calib-status").textContent =
+      "Could not start calibration";
+    console.error(err);
+    return;
+  }
+
+  calibInterval = setInterval(() => {
     remaining--;
 
     const m = String(Math.floor(remaining / 60)).padStart(2, "0");
@@ -275,53 +567,320 @@ function initCalibration() {
     pctEl.textContent = `${pct}%`;
 
     if (remaining <= 0) {
-      clearInterval(interval);
-      timerEl.textContent  = "00:00";
-      barEl.style.width    = "100%";
-      pctEl.textContent    = "100%";
-      statusEl.textContent = "Complete";
-      doneEl.style.display = "block";
-
-      const users = getUsers();
-      if (users[username]) {
-        users[username].calibrated = true;
-        saveUsers(users);
-      }
-
-      setTimeout(() => {
-        window.location.href = "loading.html";
-      }, 2000);
+      finishCalibration();
     }
   }, 1000);
 }
 
-// ── Utility functions ──
-function formatTime(seconds) {
-  const h = String(Math.floor(seconds / 3600)).padStart(2, "0");
-  const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, "0");
-  const s = String(seconds % 60).padStart(2, "0");
-  return `${h}:${m}:${s}`;
+// ── Loading / model training wait ──
+
+async function initLoading() {
+  const username = requireAuth();
+  if (!username) return;
+
+  const textEl = document.querySelector(".loading-text");
+
+  const poll = async () => {
+    try {
+      const status = await apiGet("/api/session/model-status");
+      if (status.ready) {
+        await apiPost("/api/session/start-live");
+        window.location.href = "session.html";
+        return;
+      }
+      if (status.training_error) {
+        textEl.textContent = `Training failed: ${status.training_error}`;
+        return;
+      }
+      setTimeout(poll, 1000);
+    } catch (err) {
+      textEl.textContent = "Waiting for model...";
+      setTimeout(poll, 2000);
+    }
+  };
+
+  poll();
 }
 
-function formatDate(date) {
-  return date.toLocaleDateString("en-GB", {
-    day: "2-digit", month: "2-digit", year: "numeric"
+// ── Live session ──
+
+let sessionChart          = null;
+let sessionWs             = null;
+let timerSeconds          = 0;
+let sessionPaused         = false;
+let sessionLabels         = ["0"];
+let sessionValues         = [0];
+let wsKeepalive           = null;
+let sessionTimerInterval  = null;
+let telemetryPollInterval = null;
+let sessionActive         = false;
+
+function parseElapsed(elapsed) {
+  const parts = elapsed.split(":").map(Number);
+  return parts[0] * 3600 + parts[1] * 60 + parts[2];
+}
+
+function updateSessionTimerDisplay() {
+  const el = document.getElementById("session-timer");
+  if (el) el.textContent = formatTime(timerSeconds);
+}
+
+function startSessionClock() {
+  if (sessionTimerInterval) return;
+  sessionTimerInterval = setInterval(() => {
+    if (!sessionPaused) {
+      timerSeconds += 1;
+      updateSessionTimerDisplay();
+    }
+  }, 1000);
+}
+
+function stopSessionClock() {
+  if (sessionTimerInterval) clearInterval(sessionTimerInterval);
+  sessionTimerInterval = null;
+}
+
+function stopTelemetryPolling() {
+  if (telemetryPollInterval) clearInterval(telemetryPollInterval);
+  telemetryPollInterval = null;
+}
+
+function initSessionChart() {
+  const canvas = document.getElementById("chart-session");
+  if (!canvas) return;
+
+  if (sessionChart) sessionChart.destroy();
+
+  sessionChart = new Chart(canvas, {
+    type: "line",
+    data: {
+      labels: sessionLabels,
+      datasets: [{
+        label: "Fatigue Score",
+        data: sessionValues,
+        borderColor: "#3D2D7A",
+        backgroundColor: "transparent",
+        borderWidth: 3,
+        fill: false,
+        tension: 0.4,
+        pointRadius: 4,
+        pointBackgroundColor: "#3D2D7A",
+        pointBorderColor: "#FFFFFF",
+        pointBorderWidth: 2,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 400 },
+      plugins: { legend: { display: false } },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { font: { size: 11 }, color: "#7B6BA8", maxTicksLimit: 12 },
+        },
+        y: {
+          grid: { color: "rgba(196,181,224,0.4)" },
+          ticks: { font: { size: 11 }, color: "#7B6BA8" },
+          beginAtZero: true,
+          suggestedMax: 5,
+          max: 10,
+        },
+      },
+    },
   });
 }
 
-function showError(el, message) {
-  if (!el) return;
-  el.textContent = message;
-  el.classList.add("visible");
+function updateSessionChart(elapsed, fatigue) {
+  if (sessionLabels[sessionLabels.length - 1] !== elapsed) {
+    sessionLabels.push(elapsed);
+    sessionValues.push(fatigue);
+  } else {
+    sessionValues[sessionValues.length - 1] = fatigue;
+  }
+
+  if (!sessionChart) return;
+
+  sessionChart.data.labels = sessionLabels;
+  sessionChart.data.datasets[0].data = sessionValues;
+
+  const peak = Math.max(...sessionValues, 1);
+  sessionChart.options.scales.y.suggestedMax = Math.min(10, Math.ceil(peak * 1.15));
+  sessionChart.update("none");
 }
 
-// ── Auto-init ──
-function autoInit() {
-  if (document.getElementById("calib-timer")) {
-    initCalibration();
+function applyTelemetry(msg) {
+  if (sessionPaused) return;
+  if (msg.fatigue == null) return;
+
+  const fatigueEl = document.getElementById("current-fatigue");
+  if (fatigueEl) fatigueEl.textContent = formatFatigueScore(msg.fatigue);
+
+  if (msg.elapsed) {
+    timerSeconds = parseElapsed(msg.elapsed);
+    updateSessionTimerDisplay();
   }
-  if (document.getElementById("session-timer")) {
+
+  updateSessionChart(msg.elapsed || formatTime(timerSeconds), Number(msg.fatigue));
+}
+
+async function syncLiveTelemetry() {
+  try {
+    const data = await apiGet("/api/session/live-telemetry");
+    sessionPaused = data.paused;
+
+    const btn = document.getElementById("btn-pause");
+    if (btn) {
+      btn.textContent = sessionPaused ? "Continue" : "Pause";
+      btn.classList.toggle("continue", sessionPaused);
+    }
+
+    applyTelemetry({
+      type: "telemetry",
+      fatigue: data.fatigue,
+      elapsed: data.elapsed,
+    });
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+function connectSessionWebSocket() {
+  const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
+  sessionWs = new WebSocket(`${wsProtocol}//${location.host}/ws/session`);
+
+  sessionWs.onopen = () => syncLiveTelemetry();
+
+  sessionWs.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      if (msg.type === "telemetry") applyTelemetry(msg);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  sessionWs.onclose = () => {
+    if (!sessionActive) return;
+    setTimeout(connectSessionWebSocket, 2000);
+  };
+
+  if (wsKeepalive) clearInterval(wsKeepalive);
+  wsKeepalive = setInterval(() => {
+    if (sessionWs && sessionWs.readyState === WebSocket.OPEN) {
+      sessionWs.send("ping");
+    }
+  }, 25000);
+}
+
+async function handlePause() {
+  const btn = document.getElementById("btn-pause");
+  if (sessionPaused) {
+    try {
+      await apiPost("/api/session/resume");
+      sessionPaused = false;
+      btn.textContent = "Pause";
+      btn.classList.remove("continue");
+    } catch (err) {
+      console.error(err);
+    }
+  } else {
+    try {
+      await apiPost("/api/session/pause");
+      sessionPaused = true;
+      btn.textContent = "Continue";
+      btn.classList.add("continue");
+    } catch (err) {
+      console.error(err);
+    }
+  }
+}
+
+async function handleEndSession() {
+  sessionActive = false;
+  stopSessionClock();
+  stopTelemetryPolling();
+  if (wsKeepalive) clearInterval(wsKeepalive);
+  if (sessionWs) sessionWs.close();
+
+  try {
+    await apiPost("/api/session/end");
+  } catch (err) {
+    console.error(err);
+  }
+
+  window.location.href = "dashboard.html";
+}
+
+async function initSession() {
+  const username = requireAuth();
+  if (!username) return;
+
+  document.getElementById("profile-username").textContent = username;
+
+  let status;
+  try {
+    status = await apiGet("/api/session/status");
+  } catch (err) {
+    console.error(err);
+    return;
+  }
+
+  if (status.phase === "training") {
+    window.location.href = "loading.html";
+    return;
+  }
+  if (status.phase !== "live") {
+    window.location.href = "dashboard.html";
+    return;
+  }
+
+  sessionPaused = status.paused;
+  const btn = document.getElementById("btn-pause");
+  if (btn) {
+    btn.textContent = sessionPaused ? "Continue" : "Pause";
+    btn.classList.toggle("continue", sessionPaused);
+  }
+
+  initSessionChart();
+  sessionActive = true;
+  await syncLiveTelemetry();
+  startSessionClock();
+  connectSessionWebSocket();
+  telemetryPollInterval = setInterval(syncLiveTelemetry, 1000);
+  initInfoCards();
+}
+
+// ── Page bootstrap ──
+
+function autoInit() {
+  if (document.getElementById("blink-state") &&
+      document.getElementById("btn-next")) {
+    initAdjustDevice();
+    return;
+  }
+
+  if (document.getElementById("calib-timer")) {
+    const endBtn = document.querySelector(".btn-end-calib");
+    if (endBtn) endBtn.onclick = handleEndCalibration;
+    initCalibration();
+    return;
+  }
+
+  if (document.getElementById("chart-fatigue") &&
+      document.getElementById("calendar-grid")) {
     initDashboard();
+    return;
+  }
+
+  if (document.querySelector(".loading-text") &&
+      document.getElementById("tree-svg")) {
+    initLoading();
+    return;
+  }
+
+  if (document.getElementById("chart-session")) {
+    initSession();
   }
 }
 

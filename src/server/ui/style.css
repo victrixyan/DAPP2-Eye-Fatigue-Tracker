@@ -214,3 +214,52 @@ body {
 .metric-value.orange {
   color: var(--orange);
 }
+
+/* ── Latest / Current metrics panel ── */
+.metrics-panel {
+  background: var(--lavender-soft);
+  border-radius: 40px;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  align-self: stretch;
+  min-height: 200px;
+}
+
+.metrics-panel h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--purple-dark);
+  text-align: center;
+  margin: 0 0 24px;
+  width: 100%;
+}
+
+.metrics-panel .metrics-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.metrics-panel .metrics-body .metric-value {
+  font-size: 42px;
+  font-weight: 700;
+  color: var(--purple-dark);
+  text-align: center;
+  line-height: 1.1;
+  padding: 0;
+}
+
+.metrics-panel .metrics-body .metric-label {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--purple-dark);
+  text-align: center;
+  line-height: 1.3;
+}

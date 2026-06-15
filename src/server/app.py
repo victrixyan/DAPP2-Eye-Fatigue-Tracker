@@ -48,6 +48,7 @@ HISTORY_COLUMNS = [
     "latest_blinking_rate",
 ]
 UID_PATTERN = re.compile(r"^[a-z0-9_]+$")
+FATIGUE_MAX_SECOND_DELTA = 2.0
 
 
 class SessionPhase(str, Enum):
@@ -98,6 +99,7 @@ class RuntimeSession:
     live_workers: LiveWorkers | None = None
     latest_fatigue: float = 0.0
     latest_blink_rate: float = 0.0
+    last_valid_fatigue: float | None = None
     training_error: str | None = None
     blink_state: str = "OPEN"
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
@@ -391,6 +393,13 @@ def _format_elapsed(started_at: datetime) -> str:
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
 
+def _fatigue_jump_accepted(candidate: float, previous: float | None) -> bool:
+    """Reject per-second fatigue spikes larger than FATIGUE_MAX_SECOND_DELTA."""
+    if previous is None:
+        return True
+    return abs(candidate - previous) <= FATIGUE_MAX_SECOND_DELTA
+
+
 def build_live_telemetry_payload() -> dict[str, Any] | None:
     """Build the latest live-session telemetry snapshot for HTTP/WS clients."""
     with runtime._lock:
@@ -413,19 +422,36 @@ def _telemetry_relay(result_queue: Any, relay_stop: threading.Event) -> None:
         except queue.Empty:
             continue
 
+        publish = False
+        outbound: dict[str, Any] = {}
+
         with runtime._lock:
             if runtime.phase != SessionPhase.LIVE:
                 continue
-            runtime.latest_fatigue = float(message["fatigue"])
-            runtime.latest_blink_rate = float(message["blink_rate"])
+
+            candidate = float(message["fatigue"])
+            blink_rate = float(message["blink_rate"])
             started_at = runtime.session_started_at
 
-        if started_at is not None:
-            message["elapsed"] = _format_elapsed(started_at)
+            if _fatigue_jump_accepted(candidate, runtime.last_valid_fatigue):
+                runtime.last_valid_fatigue = candidate
+                runtime.latest_fatigue = candidate
+                runtime.latest_blink_rate = blink_rate
+                outbound = {
+                    "type": "telemetry",
+                    "second": int(message.get("second", 0)),
+                    "fatigue": candidate,
+                    "blink_rate": blink_rate,
+                }
+                publish = True
 
-        message["fatigue"] = float(message["fatigue"])
-        message["blink_rate"] = float(message["blink_rate"])
-        session_hub.publish(message)
+        if not publish:
+            continue
+
+        if started_at is not None:
+            outbound["elapsed"] = _format_elapsed(started_at)
+
+        session_hub.publish(outbound)
 
 
 def stop_live_workers() -> None:
@@ -751,6 +777,7 @@ def start_live() -> dict[str, str]:
         runtime.paused = False
         runtime.latest_fatigue = 0.0
         runtime.latest_blink_rate = 0.0
+        runtime.last_valid_fatigue = None
         runtime.phase = SessionPhase.LIVE
 
     start_live_workers(uid, model_path)

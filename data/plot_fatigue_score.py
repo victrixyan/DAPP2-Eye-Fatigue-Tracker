@@ -34,6 +34,41 @@ OUTPUT_PDF = DATA_DIR / "fatigue_score_3d.pdf"
 
 # Reserve fatigue 10 for only the most anomalous tail of the plotted session.
 FATIGUE_TAIL_PERCENTILE = 1.0
+FATIGUE_MAX_SECOND_DELTA = 2.0
+
+
+def reject_fatigue_spikes(
+    fatigue: np.ndarray,
+    max_delta: float = FATIGUE_MAX_SECOND_DELTA,
+) -> np.ndarray:
+    """
+    Drop per-second fatigue points that jump more than max_delta from the
+    previous accepted score (same rule as live session telemetry).
+    """
+    if fatigue.size == 0:
+        return fatigue.copy()
+
+    accepted = np.zeros(fatigue.size, dtype=bool)
+    last_valid: float | None = None
+
+    for index, value in enumerate(fatigue):
+        score = float(value)
+        if last_valid is None or abs(score - last_valid) <= max_delta:
+            accepted[index] = True
+            last_valid = score
+
+    return accepted
+
+
+def filter_series_by_fatigue(
+    pupil: np.ndarray,
+    ibi: np.ndarray,
+    fatigue: np.ndarray,
+    max_delta: float = FATIGUE_MAX_SECOND_DELTA,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Keep only pupil/IBI/fatigue rows with accepted per-second fatigue scores."""
+    accepted = reject_fatigue_spikes(fatigue, max_delta=max_delta)
+    return pupil[accepted], ibi[accepted], fatigue[accepted]
 
 
 def score_rows(
@@ -178,13 +213,29 @@ def main() -> None:
     cal_fatigue = remap_fatigue_for_plot(cal_raw, rested_raw)
     test_fatigue = remap_fatigue_for_plot(test_raw, rested_raw)
 
+    cal_pupil, cal_ibi, cal_fatigue = filter_series_by_fatigue(
+        cal_pupil, cal_ibi, cal_fatigue
+    )
+    test_pupil, test_ibi, test_fatigue = filter_series_by_fatigue(
+        test_pupil, test_ibi, test_fatigue
+    )
+
     pupil = np.concatenate([cal_pupil, test_pupil])
     ibi = np.concatenate([cal_ibi, test_ibi])
     fatigue = np.concatenate([cal_fatigue, test_fatigue])
 
+    cal_kept = len(cal_pupil)
+    test_kept = len(test_pupil)
+    cal_rejected = len(cal_rows) - cal_kept
+    test_rejected = len(test_rows) - test_kept
+
     plot_fatigue_surface(pupil, ibi, fatigue, OUTPUT_PDF)
     print(f"Saved {OUTPUT_PDF}")
-    print(f"Points: {len(pupil)} (calibration={len(cal_pupil)}, test={len(test_pupil)})")
+    print(
+        f"Points: {len(pupil)} "
+        f"(calibration={cal_kept}, test={test_kept}; "
+        f"rejected spikes: cal={cal_rejected}, test={test_rejected})"
+    )
     print(
         "Ranges — pupil area: "
         f"{pupil.min():.1f}–{pupil.max():.1f} px², "

@@ -749,6 +749,11 @@ function initSessionChart() {
   });
 }
 
+function updateCurrentFatigueDisplay(smoothedValue) {
+  const fatigueEl = document.getElementById("current-fatigue");
+  if (fatigueEl) fatigueEl.textContent = formatFatigueScore(smoothedValue);
+}
+
 function updateSessionChart(second, fatigue) {
   const lastSecond = sessionSeconds[sessionSeconds.length - 1];
   const lastFatigue = sessionRawValues[sessionRawValues.length - 1];
@@ -784,6 +789,10 @@ function updateSessionChart(second, fatigue) {
   const peak = Math.max(...points.map((point) => point.y), 1);
   sessionChart.options.scales.y.suggestedMax = Math.min(10, Math.ceil(peak * 1.15));
   sessionChart.update("none");
+
+  if (points.length) {
+    updateCurrentFatigueDisplay(points[points.length - 1].y);
+  }
 }
 
 function applyTelemetry(msg) {
@@ -802,9 +811,6 @@ function applyTelemetry(msg) {
 
   lastTelemetrySecond = second;
   lastTelemetryFatigue = fatigue;
-
-  const fatigueEl = document.getElementById("current-fatigue");
-  if (fatigueEl) fatigueEl.textContent = formatFatigueScore(fatigue);
 
   timerSeconds = second;
   updateSessionTimerDisplay();

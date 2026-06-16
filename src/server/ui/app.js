@@ -604,12 +604,15 @@ async function initLoading() {
 
 // ── Live session ──
 
+const SESSION_SMOOTH_WINDOW_SECONDS = 60;
+const SESSION_CHART_ANCHOR_SECONDS = 120;
+
 let sessionChart          = null;
 let sessionWs             = null;
 let timerSeconds          = 0;
 let sessionPaused         = false;
-let sessionLabels         = ["0"];
-let sessionValues         = [0];
+let sessionSeconds        = [0];
+let sessionRawValues      = [0];
 let wsKeepalive           = null;
 let sessionTimerInterval  = null;
 let telemetryPollInterval = null;
@@ -645,24 +648,58 @@ function stopTelemetryPolling() {
   telemetryPollInterval = null;
 }
 
+function movingAverageTrailing(values, windowSize) {
+  return values.map((_, index) => {
+    const start = Math.max(0, index - windowSize + 1);
+    const slice = values.slice(start, index + 1);
+    return slice.reduce((sum, value) => sum + value, 0) / slice.length;
+  });
+}
+
+function buildSessionChartSeries(seconds, smoothedValues) {
+  const anchor = SESSION_CHART_ANCHOR_SECONDS;
+  const lastSecond = seconds[seconds.length - 1];
+
+  if (lastSecond < anchor) {
+    return seconds.map((second, index) => ({
+      x: second,
+      y: smoothedValues[index],
+    }));
+  }
+
+  const points = [];
+  for (let index = 0; index < seconds.length; index += 1) {
+    const second = seconds[index];
+    if (second >= anchor) {
+      points.push({
+        x: second - anchor,
+        y: smoothedValues[index],
+      });
+    }
+  }
+  return points;
+}
+
 function initSessionChart() {
   const canvas = document.getElementById("chart-session");
   if (!canvas) return;
+
+  sessionSeconds = [0];
+  sessionRawValues = [0];
 
   if (sessionChart) sessionChart.destroy();
 
   sessionChart = new Chart(canvas, {
     type: "line",
     data: {
-      labels: sessionLabels,
       datasets: [{
         label: "Fatigue Score",
-        data: sessionValues,
+        data: [{ x: 0, y: 0 }],
         borderColor: "#3D2D7A",
         backgroundColor: "transparent",
         borderWidth: 3,
         fill: false,
-        tension: 0.4,
+        tension: 0.35,
         pointRadius: 4,
         pointBackgroundColor: "#3D2D7A",
         pointBorderColor: "#FFFFFF",
@@ -672,12 +709,19 @@ function initSessionChart() {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      parsing: false,
       animation: { duration: 400 },
       plugins: { legend: { display: false } },
       scales: {
         x: {
+          type: "linear",
           grid: { display: false },
-          ticks: { font: { size: 11 }, color: "#7B6BA8", maxTicksLimit: 12 },
+          ticks: {
+            font: { size: 11 },
+            color: "#7B6BA8",
+            maxTicksLimit: 12,
+            callback: (value) => formatTime(Math.round(value)),
+          },
         },
         y: {
           grid: { color: "rgba(196,181,224,0.4)" },
@@ -692,19 +736,26 @@ function initSessionChart() {
 }
 
 function updateSessionChart(elapsed, fatigue) {
-  if (sessionLabels[sessionLabels.length - 1] !== elapsed) {
-    sessionLabels.push(elapsed);
-    sessionValues.push(fatigue);
+  const second = elapsed != null ? parseElapsed(elapsed) : timerSeconds;
+
+  if (sessionSeconds[sessionSeconds.length - 1] !== second) {
+    sessionSeconds.push(second);
+    sessionRawValues.push(fatigue);
   } else {
-    sessionValues[sessionValues.length - 1] = fatigue;
+    sessionRawValues[sessionRawValues.length - 1] = fatigue;
   }
+
+  const smoothed = movingAverageTrailing(
+    sessionRawValues,
+    SESSION_SMOOTH_WINDOW_SECONDS
+  );
+  const points = buildSessionChartSeries(sessionSeconds, smoothed);
 
   if (!sessionChart) return;
 
-  sessionChart.data.labels = sessionLabels;
-  sessionChart.data.datasets[0].data = sessionValues;
+  sessionChart.data.datasets[0].data = points;
 
-  const peak = Math.max(...sessionValues, 1);
+  const peak = Math.max(...points.map((point) => point.y), 1);
   sessionChart.options.scales.y.suggestedMax = Math.min(10, Math.ceil(peak * 1.15));
   sessionChart.update("none");
 }

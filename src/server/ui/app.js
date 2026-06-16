@@ -617,6 +617,8 @@ let wsKeepalive           = null;
 let sessionTimerInterval  = null;
 let telemetryPollInterval = null;
 let sessionActive         = false;
+let lastTelemetrySecond   = null;
+let lastTelemetryFatigue  = null;
 
 function parseElapsed(elapsed) {
   const parts = elapsed.split(":").map(Number);
@@ -661,23 +663,32 @@ function buildSessionChartSeries(seconds, smoothedValues) {
   const lastSecond = seconds[seconds.length - 1];
 
   if (lastSecond < anchor) {
-    return seconds.map((second, index) => ({
-      x: second,
-      y: smoothedValues[index],
-    }));
+    return {
+      points: seconds.map((second, index) => ({
+        x: second,
+        y: smoothedValues[index],
+      })),
+      xMax: null,
+    };
   }
 
+  const windowStart = Math.max(anchor, lastSecond - anchor);
   const points = [];
+
   for (let index = 0; index < seconds.length; index += 1) {
     const second = seconds[index];
-    if (second >= anchor) {
+    if (second >= windowStart) {
       points.push({
-        x: second - anchor,
+        x: second - windowStart,
         y: smoothedValues[index],
       });
     }
   }
-  return points;
+
+  return {
+    points,
+    xMax: lastSecond - windowStart,
+  };
 }
 
 function initSessionChart() {
@@ -686,6 +697,8 @@ function initSessionChart() {
 
   sessionSeconds = [0];
   sessionRawValues = [0];
+  lastTelemetrySecond = null;
+  lastTelemetryFatigue = null;
 
   if (sessionChart) sessionChart.destroy();
 
@@ -699,11 +712,9 @@ function initSessionChart() {
         backgroundColor: "transparent",
         borderWidth: 3,
         fill: false,
-        tension: 0.35,
-        pointRadius: 4,
-        pointBackgroundColor: "#3D2D7A",
-        pointBorderColor: "#FFFFFF",
-        pointBorderWidth: 2,
+        tension: 0.42,
+        pointRadius: 0,
+        pointHoverRadius: 0,
       }],
     },
     options: {
@@ -712,6 +723,9 @@ function initSessionChart() {
       parsing: false,
       animation: { duration: 400 },
       plugins: { legend: { display: false } },
+      elements: {
+        point: { radius: 0, hoverRadius: 0 },
+      },
       scales: {
         x: {
           type: "linear",
@@ -735,25 +749,37 @@ function initSessionChart() {
   });
 }
 
-function updateSessionChart(elapsed, fatigue) {
-  const second = elapsed != null ? parseElapsed(elapsed) : timerSeconds;
+function updateSessionChart(second, fatigue) {
+  const lastSecond = sessionSeconds[sessionSeconds.length - 1];
+  const lastFatigue = sessionRawValues[sessionRawValues.length - 1];
 
-  if (sessionSeconds[sessionSeconds.length - 1] !== second) {
+  if (second < lastSecond) return;
+
+  if (second === lastSecond) {
+    if (lastFatigue === fatigue) return;
+    sessionRawValues[sessionRawValues.length - 1] = fatigue;
+  } else {
     sessionSeconds.push(second);
     sessionRawValues.push(fatigue);
-  } else {
-    sessionRawValues[sessionRawValues.length - 1] = fatigue;
   }
 
   const smoothed = movingAverageTrailing(
     sessionRawValues,
     SESSION_SMOOTH_WINDOW_SECONDS
   );
-  const points = buildSessionChartSeries(sessionSeconds, smoothed);
+  const { points, xMax } = buildSessionChartSeries(sessionSeconds, smoothed);
 
   if (!sessionChart) return;
 
   sessionChart.data.datasets[0].data = points;
+
+  if (xMax != null) {
+    sessionChart.options.scales.x.min = 0;
+    sessionChart.options.scales.x.max = xMax;
+  } else {
+    sessionChart.options.scales.x.min = 0;
+    sessionChart.options.scales.x.max = undefined;
+  }
 
   const peak = Math.max(...points.map((point) => point.y), 1);
   sessionChart.options.scales.y.suggestedMax = Math.min(10, Math.ceil(peak * 1.15));
@@ -762,17 +788,28 @@ function updateSessionChart(elapsed, fatigue) {
 
 function applyTelemetry(msg) {
   if (sessionPaused) return;
-  if (msg.fatigue == null) return;
+  if (msg.fatigue == null || msg.elapsed == null) return;
 
-  const fatigueEl = document.getElementById("current-fatigue");
-  if (fatigueEl) fatigueEl.textContent = formatFatigueScore(msg.fatigue);
+  const second = parseElapsed(msg.elapsed);
+  const fatigue = Number(msg.fatigue);
 
-  if (msg.elapsed) {
-    timerSeconds = parseElapsed(msg.elapsed);
-    updateSessionTimerDisplay();
+  if (
+    lastTelemetrySecond === second &&
+    lastTelemetryFatigue === fatigue
+  ) {
+    return;
   }
 
-  updateSessionChart(msg.elapsed || formatTime(timerSeconds), Number(msg.fatigue));
+  lastTelemetrySecond = second;
+  lastTelemetryFatigue = fatigue;
+
+  const fatigueEl = document.getElementById("current-fatigue");
+  if (fatigueEl) fatigueEl.textContent = formatFatigueScore(fatigue);
+
+  timerSeconds = second;
+  updateSessionTimerDisplay();
+
+  updateSessionChart(second, fatigue);
 }
 
 async function syncLiveTelemetry() {
@@ -785,6 +822,8 @@ async function syncLiveTelemetry() {
       btn.textContent = sessionPaused ? "Continue" : "Pause";
       btn.classList.toggle("continue", sessionPaused);
     }
+
+    if (data.elapsed == null || data.fatigue == null) return;
 
     applyTelemetry({
       type: "telemetry",
